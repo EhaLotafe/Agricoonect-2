@@ -1,25 +1,19 @@
 import {
-  users,
-  products,
-  orders,
-  reviews,
-  contacts,
-  type User,
-  type InsertUser,
-  type Product,
-  type InsertProduct,
-  type Order,
-  type InsertOrder,
-  type Review,
-  type InsertReview,
-  type Contact,
-  type InsertContact,
+  users, products, orders, reviews, contacts,
+  type User, type InsertUser, type Product, type InsertProduct,
+  type Order, type InsertOrder, type Review, type InsertReview,
+  type Contact, type InsertContact,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, like, sql, asc } from "drizzle-orm";
+import { eq, and, desc, like, sql } from "drizzle-orm";
+import { aliasedTable } from "drizzle-orm";
+
+// Alias obligatoires pour joindre la table users deux fois dans une seule requête
+const farmers = aliasedTable(users, "farmers");
+const buyers = aliasedTable(users, "buyers");
 
 export interface IStorage {
-  // User operations
+  // Utilisateurs
   getUser(id: number): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
@@ -27,16 +21,15 @@ export interface IStorage {
   updateUser(id: number, user: Partial<InsertUser>): Promise<User>;
   getAllUsers(): Promise<User[]>;
 
-  // Product operations
+  // Produits
   getProduct(id: number): Promise<Product | undefined>;
   getProductWithFarmer(id: number): Promise<(Product & { farmer: User }) | undefined>;
   getProductsByFarmer(farmerId: number): Promise<Product[]>;
   getAllProducts(filters?: {
     category?: string;
     province?: string;
+    commune?: string; // Ajout Lubumbashi
     search?: string;
-    saleMode?: string;
-    isActive?: boolean;
     isApproved?: boolean;
   }): Promise<Product[]>;
   createProduct(product: InsertProduct): Promise<Product>;
@@ -44,401 +37,226 @@ export interface IStorage {
   deleteProduct(id: number): Promise<void>;
   approveProduct(id: number): Promise<Product>;
 
-  // Order operations
-  getOrder(id: number): Promise<Order | undefined>;
-  getOrderWithDetails(id: number): Promise<(Order & { product: Product; farmer: User; buyer: User }) | undefined>;
-  getOrdersByBuyer(buyerId: number): Promise<(Order & { product: Product; farmer: User })[]>;
-  getOrdersByFarmer(farmerId: number): Promise<(Order & { product: Product; buyer: User })[]>;
+  // Commandes
+  getOrderWithDetails(id: number): Promise<any>;
+  getOrdersByBuyer(buyerId: number): Promise<any[]>;
+  getOrdersByFarmer(farmerId: number): Promise<any[]>;
   createOrder(order: InsertOrder): Promise<Order>;
   updateOrder(id: number, order: Partial<InsertOrder>): Promise<Order>;
 
-  // Review operations
-  getReviewsByProduct(productId: number): Promise<(Review & { buyer: User })[]>;
+  // Avis / Contacts / Stats
+  getReviewsByProduct(productId: number): Promise<any[]>;
   createReview(review: InsertReview): Promise<Review>;
-  getAverageRating(productId: number): Promise<number>;
-
-  // Contact operations
-  getContactsByFarmer(farmerId: number): Promise<(Contact & { buyer: User; product: Product })[]>;
+  getContactsByFarmer(farmerId: number): Promise<any[]>;
   createContact(contact: InsertContact): Promise<Contact>;
-  updateContact(id: number, contact: Partial<InsertContact>): Promise<Contact>;
-
-  // Statistics
-  getStats(): Promise<{
-    totalFarmers: number;
-    totalProducts: number;
-    totalOrders: number;
-    totalProvinces: number;
-  }>;
+  getStats(): Promise<any>;
 }
 
 export class DatabaseStorage implements IStorage {
-  async getUser(id: number): Promise<User | undefined> {
+  // --- UTILISATEURS ---
+  async getUser(id: number) {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
   }
-
-  async getUserByEmail(email: string): Promise<User | undefined> {
+  async getUserByEmail(email: string) {
     const [user] = await db.select().from(users).where(eq(users.email, email));
     return user;
   }
-
-  async getUserByUsername(username: string): Promise<User | undefined> {
+  async getUserByUsername(username: string) {
     const [user] = await db.select().from(users).where(eq(users.username, username));
     return user;
   }
-
-  async createUser(userData: InsertUser): Promise<User> {
+  async createUser(userData: InsertUser) {
     const [user] = await db.insert(users).values(userData).returning();
     return user;
   }
-
-  async updateUser(id: number, userData: Partial<InsertUser>): Promise<User> {
-    const [user] = await db
-      .update(users)
-      .set({ ...userData, updatedAt: new Date() })
-      .where(eq(users.id, id))
-      .returning();
+  async updateUser(id: number, userData: Partial<InsertUser>) {
+    const [user] = await db.update(users).set({ ...userData, updatedAt: new Date() }).where(eq(users.id, id)).returning();
     return user;
   }
-
-  async getAllUsers(): Promise<User[]> {
+  async getAllUsers() {
     return await db.select().from(users).orderBy(desc(users.createdAt));
   }
 
-  async getProduct(id: number): Promise<Product | undefined> {
+  // --- PRODUITS (Avec logique Lubumbashi & Fraîcheur) ---
+  async getProduct(id: number) {
     const [product] = await db.select().from(products).where(eq(products.id, id));
     return product;
   }
 
-  async getProductWithFarmer(id: number): Promise<(Product & { farmer: User }) | undefined> {
+  async getProductWithFarmer(id: number) {
     const result = await db
-      .select({
-        id: products.id,
-        farmerId: products.farmerId,
-        name: products.name,
-        description: products.description,
-        category: products.category,
-        price: products.price,
-        unit: products.unit,
-        quantity: products.quantity,
-        availableQuantity: products.availableQuantity,
-        saleMode: products.saleMode,
-        location: products.location,
-        province: products.province,
-        images: products.images,
-        isActive: products.isActive,
-        isApproved: products.isApproved,
-        createdAt: products.createdAt,
-        updatedAt: products.updatedAt,
-        farmer: users,
-      })
+      .select({ product: products, farmer: users })
       .from(products)
       .leftJoin(users, eq(products.farmerId, users.id))
       .where(eq(products.id, id));
-
     if (result.length === 0) return undefined;
-
-    const row = result[0];
-    return {
-      ...row,
-      farmer: row.farmer!,
-    };
+    return { ...result[0].product, farmer: result[0].farmer! };
   }
 
-  async getProductsByFarmer(farmerId: number): Promise<Product[]> {
-    return await db
-      .select()
-      .from(products)
-      .where(eq(products.farmerId, farmerId))
-      .orderBy(desc(products.createdAt));
-  }
+  // server/storage.ts
 
-  async getAllProducts(filters?: {
-    category?: string;
-    province?: string;
-    search?: string;
-    saleMode?: string;
-    isActive?: boolean;
-    isApproved?: boolean;
-  }): Promise<Product[]> {
-    let query = db.select().from(products);
-    
-    const conditions = [];
-    
-    if (filters?.isActive !== undefined) {
-      conditions.push(eq(products.isActive, filters.isActive));
-    }
-    
-    if (filters?.isApproved !== undefined) {
-      conditions.push(eq(products.isApproved, filters.isApproved));
-    }
-    
-    if (filters?.category) {
-      conditions.push(eq(products.category, filters.category));
-    }
-    
-    if (filters?.province) {
-      conditions.push(eq(products.province, filters.province));
-    }
-    
-    if (filters?.saleMode) {
-      conditions.push(eq(products.saleMode, filters.saleMode));
-    }
-    
-    if (filters?.search) {
-      conditions.push(like(products.name, `%${filters.search}%`));
-    }
-    
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions));
-    }
-    
-    return await query.orderBy(desc(products.createdAt));
-  }
+  async getAllProducts(filters: any) {
+  const conditions = [];
+  if (filters?.isApproved !== undefined) conditions.push(eq(products.isApproved, filters.isApproved));
+  if (filters?.category) conditions.push(eq(products.category, filters.category));
+  if (filters?.commune) conditions.push(eq(products.commune, filters.commune));
+  if (filters?.search) conditions.push(like(products.name, `%${filters.search}%`));
 
-  async createProduct(productData: InsertProduct): Promise<Product> {
+  // ✅ JOINTURE avec la table users pour inclure l'objet farmer
+  const query = db
+    .select({
+      product: products,
+      farmer: {
+        id: users.id,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        phone: users.phone,
+      }
+    })
+    .from(products)
+    .leftJoin(users, eq(products.farmerId, users.id));
+
+  const result = conditions.length > 0 
+    ? await query.where(and(...conditions)).orderBy(desc(products.harvestDate))
+    : await query.orderBy(desc(products.harvestDate));
+
+  // On reformate pour que le farmer soit à l'intérieur de l'objet produit
+  return result.map(row => ({
+    ...row.product,
+    farmer: row.farmer
+  }));
+}
+
+  async createProduct(productData: InsertProduct) {
     const [product] = await db.insert(products).values(productData).returning();
     return product;
   }
 
-  async updateProduct(id: number, productData: Partial<InsertProduct>): Promise<Product> {
-    const [product] = await db
-      .update(products)
-      .set({ ...productData, updatedAt: new Date() })
-      .where(eq(products.id, id))
-      .returning();
+  async updateProduct(id: number, productData: Partial<InsertProduct>) {
+    const [product] = await db.update(products).set({ ...productData, updatedAt: new Date() }).where(eq(products.id, id)).returning();
     return product;
   }
 
-  async deleteProduct(id: number): Promise<void> {
+  async approveProduct(id: number) {
+    const [product] = await db.update(products).set({ isApproved: true, updatedAt: new Date() }).where(eq(products.id, id)).returning();
+    return product;
+  }
+
+  async deleteProduct(id: number) {
     await db.delete(products).where(eq(products.id, id));
   }
 
-  async approveProduct(id: number): Promise<Product> {
-    const [product] = await db
-      .update(products)
-      .set({ isApproved: true, updatedAt: new Date() })
-      .where(eq(products.id, id))
-      .returning();
-    return product;
+  async getProductsByFarmer(farmerId: number) {
+    return await db.select().from(products).where(eq(products.farmerId, farmerId)).orderBy(desc(products.createdAt));
   }
 
-  async getOrder(id: number): Promise<Order | undefined> {
-    const [order] = await db.select().from(orders).where(eq(orders.id, id));
-    return order;
-  }
-
-  async getOrderWithDetails(id: number): Promise<(Order & { product: Product; farmer: User; buyer: User }) | undefined> {
+  // --- COMMANDES (Utilisation des Alias pour éviter le crash SQL) ---
+  async getOrderWithDetails(id: number) {
     const result = await db
       .select({
         order: orders,
         product: products,
-        farmer: {
-          id: users.id,
-          firstName: users.firstName,
-          lastName: users.lastName,
-          phone: users.phone,
-          email: users.email,
-        },
-        buyer: {
-          id: users.id,
-          firstName: users.firstName,
-          lastName: users.lastName,
-          phone: users.phone,
-          email: users.email,
-        },
+        buyer: buyers,
+        farmer: farmers,
       })
       .from(orders)
       .leftJoin(products, eq(orders.productId, products.id))
-      .leftJoin(users, eq(orders.farmerId, users.id))
+      .leftJoin(buyers, eq(orders.buyerId, buyers.id))
+      .leftJoin(farmers, eq(orders.farmerId, farmers.id))
       .where(eq(orders.id, id));
-
     if (result.length === 0) return undefined;
-
-    const row = result[0];
-    return {
-      ...row.order,
-      product: row.product!,
-      farmer: row.farmer as User,
-      buyer: row.buyer as User,
-    };
+    return { ...result[0].order, product: result[0].product, buyer: result[0].buyer, farmer: result[0].farmer };
   }
 
-  async getOrdersByBuyer(buyerId: number): Promise<(Order & { product: Product; farmer: User })[]> {
+  async getOrdersByBuyer(buyerId: number) {
     const result = await db
-      .select({
-        order: orders,
-        product: products,
-        farmer: {
-          id: users.id,
-          firstName: users.firstName,
-          lastName: users.lastName,
-          phone: users.phone,
-          email: users.email,
-        },
-      })
+      .select({ order: orders, product: products, farmer: farmers })
       .from(orders)
       .leftJoin(products, eq(orders.productId, products.id))
-      .leftJoin(users, eq(orders.farmerId, users.id))
+      .leftJoin(farmers, eq(orders.farmerId, farmers.id))
       .where(eq(orders.buyerId, buyerId))
       .orderBy(desc(orders.createdAt));
-
-    return result.map(row => ({
-      ...row.order,
-      product: row.product!,
-      farmer: row.farmer as User,
-    }));
+    return result.map(r => ({ ...r.order, product: r.product, farmer: r.farmer }));
   }
 
-  async getOrdersByFarmer(farmerId: number): Promise<(Order & { product: Product; buyer: User })[]> {
+  async getOrdersByFarmer(farmerId: number) {
     const result = await db
-      .select({
-        order: orders,
-        product: products,
-        buyer: {
-          id: users.id,
-          firstName: users.firstName,
-          lastName: users.lastName,
-          phone: users.phone,
-          email: users.email,
-        },
-      })
+      .select({ order: orders, product: products, buyer: buyers })
       .from(orders)
       .leftJoin(products, eq(orders.productId, products.id))
-      .leftJoin(users, eq(orders.buyerId, users.id))
+      .leftJoin(buyers, eq(orders.buyerId, buyers.id))
       .where(eq(orders.farmerId, farmerId))
       .orderBy(desc(orders.createdAt));
-
-    return result.map(row => ({
-      ...row.order,
-      product: row.product!,
-      buyer: row.buyer as User,
-    }));
+    return result.map(r => ({ ...r.order, product: r.product, buyer: r.buyer }));
   }
 
-  async createOrder(orderData: InsertOrder): Promise<Order> {
+  async createOrder(orderData: InsertOrder) {
     const [order] = await db.insert(orders).values(orderData).returning();
     return order;
   }
 
-  async updateOrder(id: number, orderData: Partial<InsertOrder>): Promise<Order> {
-    const [order] = await db
-      .update(orders)
-      .set({ ...orderData, updatedAt: new Date() })
-      .where(eq(orders.id, id))
-      .returning();
+  async updateOrder(id: number, orderData: Partial<InsertOrder>) {
+    const [order] = await db.update(orders).set({ ...orderData, updatedAt: new Date() }).where(eq(orders.id, id)).returning();
     return order;
   }
 
-  async getReviewsByProduct(productId: number): Promise<(Review & { buyer: User })[]> {
+  // --- AVIS & CONTACTS ---
+  async getReviewsByProduct(productId: number) {
     const result = await db
-      .select({
-        review: reviews,
-        buyer: {
-          id: users.id,
-          firstName: users.firstName,
-          lastName: users.lastName,
-        },
-      })
+      .select({ review: reviews, buyer: users })
       .from(reviews)
       .leftJoin(users, eq(reviews.buyerId, users.id))
-      .where(eq(reviews.productId, productId))
-      .orderBy(desc(reviews.createdAt));
-
-    return result.map(row => ({
-      ...row.review,
-      buyer: row.buyer as User,
-    }));
+      .where(eq(reviews.productId, productId));
+    return result.map(r => ({ ...r.review, buyer: r.buyer }));
   }
 
-  async createReview(reviewData: InsertReview): Promise<Review> {
+  async createReview(reviewData: InsertReview) {
     const [review] = await db.insert(reviews).values(reviewData).returning();
     return review;
   }
 
-  async getAverageRating(productId: number): Promise<number> {
+  async getContactsByFarmer(farmerId: number) {
     const result = await db
-      .select({ avg: sql<number>`avg(${reviews.rating})` })
-      .from(reviews)
-      .where(eq(reviews.productId, productId));
-    
-    return result[0]?.avg || 0;
-  }
-
-  async getContactsByFarmer(farmerId: number): Promise<(Contact & { buyer: User; product: Product })[]> {
-    const result = await db
-      .select({
-        contact: contacts,
-        buyer: {
-          id: users.id,
-          firstName: users.firstName,
-          lastName: users.lastName,
-          email: users.email,
-          phone: users.phone,
-        },
-        product: {
-          id: products.id,
-          name: products.name,
-        },
-      })
+      .select({ contact: contacts, buyer: buyers, product: products })
       .from(contacts)
-      .leftJoin(users, eq(contacts.buyerId, users.id))
+      .leftJoin(buyers, eq(contacts.buyerId, buyers.id))
       .leftJoin(products, eq(contacts.productId, products.id))
-      .where(eq(contacts.farmerId, farmerId))
-      .orderBy(desc(contacts.createdAt));
-
-    return result.map(row => ({
-      ...row.contact,
-      buyer: row.buyer as User,
-      product: row.product as Product,
-    }));
+      .where(eq(contacts.farmerId, farmerId));
+    return result.map(r => ({ ...r.contact, buyer: r.buyer, product: r.product }));
   }
 
-  async createContact(contactData: InsertContact): Promise<Contact> {
+  async createContact(contactData: InsertContact) {
     const [contact] = await db.insert(contacts).values(contactData).returning();
     return contact;
   }
 
-  async updateContact(id: number, contactData: Partial<InsertContact>): Promise<Contact> {
-    const [contact] = await db
-      .update(contacts)
-      .set(contactData)
-      .where(eq(contacts.id, id))
-      .returning();
+  async updateContact(id: number, contactData: Partial<InsertContact>) {
+    const [contact] = await db.update(contacts).set(contactData).where(eq(contacts.id, id)).returning();
     return contact;
   }
 
-  async getStats(): Promise<{
-    totalFarmers: number;
-    totalProducts: number;
-    totalOrders: number;
-    totalProvinces: number;
-  }> {
-    const [farmerCount] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(users)
-      .where(eq(users.userType, 'farmer'));
+  // --- STATISTIQUES ---
+  // Statistiques (server/storage.ts)
+  async getStats() {
+    try {
+      const [farmerCount] = await db.select({ count: sql<number>`count(*)` }).from(users).where(eq(users.userType, "farmer"));
+      const [productCount] = await db.select({ count: sql<number>`count(*)` }).from(products).where(eq(products.isApproved, true));
+      const [orderCount] = await db.select({ count: sql<number>`count(*)` }).from(orders);
+      
+      // On récupère les communes distinctes
+      const communesResult = await db.select({ name: products.commune }).from(products).groupBy(products.commune);
 
-    const [productCount] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(products)
-      .where(and(eq(products.isActive, true), eq(products.isApproved, true)));
-
-    const [orderCount] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(orders);
-
-    const provinces = await db
-      .select({ province: products.province })
-      .from(products)
-      .groupBy(products.province);
-
-    return {
-      totalFarmers: farmerCount.count,
-      totalProducts: productCount.count,
-      totalOrders: orderCount.count,
-      totalProvinces: provinces.length,
-    };
+      return {
+        totalFarmers: Number(farmerCount?.count || 0),
+        totalProducts: Number(productCount?.count || 0),
+        totalOrders: Number(orderCount?.count || 0),
+        totalCommunes: communesResult.length || 0,
+      };
+    } catch (error) {
+      console.error("Erreur Stats:", error);
+      return { totalFarmers: 0, totalProducts: 0, totalOrders: 0, totalCommunes: 0 };
+    }
   }
 }
 

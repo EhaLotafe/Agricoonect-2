@@ -1,0 +1,121 @@
+C'est un excellent récapitulatif. On avance très bien, mais il reste des points techniques "costauds" à régler pour que ton application soit au niveau Master/Ingénieur.
+
+Voici le bilan de ce qui est FAIT et ce qu'il nous reste à faire étape par étape :
+
+1. État des lieux (Ce qui est prêt vs Ce qui reste)
+Fonctionnalité	État	Action à venir
+Schéma BDD (Lubumbashi)	✅ Fait	Rien (Supabase est synchronisé).
+Username Automatique	⚠️ Prévu	Injecter la logique dans register.tsx.
+Communes (Liste + Autre)	⚠️ Prévu	Modifier le formulaire register.tsx.
+Couleurs Dark/Light	✅ Fait	C'est dans ton index.css.
+Visibilité Password (Œil)	❌ À faire	Ajouter un état showPassword dans Login/Register.
+Header Dynamique	⚠️ Partiel	Refactoriser header.tsx avec les rôles.
+Modifier le Profil	❌ À faire	Créer une page ou modale profile.tsx.
+Mode Offline (POST)	❌ À faire	Le gros morceau. Utiliser localStorage + Sync.
+ÉTAPE 1 : Finaliser l'Inscription et la Connexion (Username, Communes, Œil)
+
+On va modifier register.tsx pour tout régler d'un coup.
+
+Ce qu'on ajoute :
+
+Génération auto : On cache le champ Username.
+
+L'œil : On utilise une icône pour basculer le type d'input entre password et text.
+
+Code pour l'œil (à mettre dans tes pages) :
+
+code
+Tsx
+download
+content_copy
+expand_less
+const [showPass, setShowPass] = useState(false);
+// Dans le JSX :
+<Input type={showPass ? "text" : "password"} />
+<Button onClick={() => setShowPass(!showPass)}>{showPass ? <EyeOff /> : <Eye />}</Button>
+ÉTAPE 2 : Le Header Dynamique (RBAC)
+
+Pour que des boutons disparaissent selon l'utilisateur, on utilise ton AuthContext.
+
+Si Farmer : On affiche "Mes Récoltes".
+
+Si Buyer : On affiche "Mes Commandes".
+
+Si Admin : On affiche "Administration".
+
+ÉTAPE 3 : La question "Offline" (Très important pour ton mémoire)
+
+C'est ici que tu vas impressionner le jury. Comment poster sans internet alors que Supabase est dans le Cloud ?
+
+La solution technique (Architecture Résiliente) :
+
+Le Token : Tu as raison, pour le rural, on va configurer le JWT (dans server/routes.ts) pour qu'il dure 30 jours (ou plus). Une fois connecté en ville, l'agriculteur reste authentifié au champ pendant un mois.
+
+Le Stockage Local (IndexedDB ou LocalStorage) :
+
+Quand l'agriculteur clique sur "Publier" et qu'il n'y a pas de réseau : le Frontend ne renvoie pas d'erreur.
+
+Le code enregistre l'annonce dans une "File d'attente" (Queue) dans la mémoire du téléphone.
+
+La Synchronisation (Background Sync) :
+
+L'application surveille la connexion (navigator.onLine).
+
+Dès que l'agriculteur capte la 3G/4G (en rentrant au village ou en allant vers Lubumbashi), l'application envoie automatiquement toutes les annonces stockées vers Supabase.
+
+
+On nettoie header.tsx pour qu'il soit vraiment dynamique.
+
+🎯 Étape 1 : Le Coeur du Design (client/src/index.css)
+
+On va configurer les variables HSL pour que le passage clair/sombre soit parfait, surtout pour les textes et les fonds de cartes.
+
+🎯 Étape 2 : Le Header Dynamique (client/src/components/header.tsx)
+
+On va faire en sorte que le Header s'adapte au rôle (Admin/Farmer/Buyer) et gère le Logout proprement via ton useAuth.
+
+Ce qu'il faut faire :
+
+Importer useAuth.
+
+Selon user.userType, afficher ou cacher les liens (ex: cacher "Mes Récoltes" si je suis un simple acheteur).
+
+Veux-tu que je te donne le code complet corrigé du Header ?
+
+🎯 Étape 3 : L'Inscription "Turbo" (client/src/pages/register.tsx)
+
+On va appliquer tes demandes :
+
+Username auto-généré (on cache le champ).
+
+Liste des communes de Lubumbashi (Annexe, Ruashi, etc.) + option "Autre".
+
+L'oeil pour le mot de passe.
+
+C'est le fichier suivant qu'on va traiter. Envoie-moi ton register.tsx actuel.
+
+💡 Réponse à ta question sur le Offline (Mémoire)
+
+C'est le point le plus important de ton TFC.
+
+Comment ça marche techniquement ?
+
+Authentification : Le token JWT est stocké dans le localStorage. On va configurer le Backend pour qu'il soit valide 30 jours. Ainsi, même sans internet, le Frontend "croit" encore que tu es connecté.
+
+Poster des produits offline :
+
+Dans ton composant de formulaire, si navigator.onLine est faux, on enregistre l'objet du produit dans une liste appelée offline_sync dans le localStorage.
+
+On affiche un message : "Enregistré localement. Synchronisation dès que le réseau revient".
+
+On crée un petit script (Background Worker) qui surveille le retour du réseau pour envoyer les données à Supabase automatiquement.
+
+On commence par quel fichier ? Le Header ou le Register ? (Envoie-moi le code de celui que tu choisis).
+
+
+
+
+
+
+git commit -m "Version finale Agri-Connect : Architecture 3-tiers, RBAC et Offline-First"
+git push -u origin main

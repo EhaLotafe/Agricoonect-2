@@ -2,22 +2,29 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Sprout, Tractor, ShoppingBasket } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Sprout, Tractor, ShoppingBasket, Loader2, UserPlus, Eye, EyeOff, MapPin, ShieldCheck } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { insertUserSchema } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/App";
+import { useAuth } from "@/context/auth-context";
 import { z } from "zod";
+import { cn } from "@/lib/utils";
 
-const registerSchema = insertUserSchema.extend({
-  confirmPassword: z.string().min(1, "Veuillez confirmer votre mot de passe"),
+// 📍 Communes de Lubumbashi
+const COMMUNE_LIST = ["Annexe", "Lubumbashi", "Kenya", "Katuba", "Kamalondo", "Kampemba", "Ruashi", "Autre"];
+
+// Schéma de validation : on ignore 'username' car on le génère auto
+const registerSchema = insertUserSchema.omit({ username: true }).extend({
+  confirmPassword: z.string().min(1, "La confirmation est requise"),
+  commune: z.string().min(1, "Veuillez choisir votre zone"),
+  customCommune: z.string().optional(),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Les mots de passe ne correspondent pas",
   path: ["confirmPassword"],
@@ -26,263 +33,191 @@ const registerSchema = insertUserSchema.extend({
 type RegisterFormData = z.infer<typeof registerSchema>;
 
 export default function Register() {
-  const [location] = useLocation();
-  const urlParams = new URLSearchParams(location.split('?')[1] || '');
-  const defaultUserType = urlParams.get('type') as 'farmer' | 'buyer' || 'buyer';
-  
-  const [userType, setUserType] = useState<'farmer' | 'buyer'>(defaultUserType);
-  const { setUser } = useAuth();
+  const [, navigate] = useLocation();
+  const { login } = useAuth();
   const { toast } = useToast();
+  const [showPass, setShowPass] = useState(false);
 
   const form = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
-      username: '',
-      email: '',
-      password: '',
-      confirmPassword: '',
-      firstName: '',
-      lastName: '',
-      phone: '',
-      userType: userType,
-      location: '',
-      isActive: true,
+      firstName: '', lastName: '', email: '', phone: '',
+      password: '', confirmPassword: '', userType: 'buyer',
+      commune: '', customCommune: '', isActive: true,
     },
   });
+
+  const userType = form.watch('userType');
+  const selectedCommune = form.watch('commune');
 
   const registerMutation = useMutation({
     mutationFn: async (data: RegisterFormData) => {
-      const { confirmPassword, ...userData } = data;
-      return await apiRequest('POST', '/api/register', userData);
-    },
-    onSuccess: async (response) => {
-      const user = await response.json();
-      setUser(user);
-      toast({
-        title: "Inscription réussie",
-        description: "Votre compte a été créé avec succès!",
-      });
+      // 🤖 GÉNÉRATION AUTO DU USERNAME (Point clé du mémoire)
+      const autoUsername = `${data.firstName.toLowerCase()}.${data.lastName.toLowerCase()}${Math.floor(Math.random() * 1000)}`.replace(/\s/g, '');
       
-      // Redirect based on user type
-      if (userType === 'farmer') {
-        window.location.href = '/farmer/dashboard';
-      } else {
-        window.location.href = '/buyer/dashboard';
+      const finalLocation = data.commune === "Autre" ? data.customCommune : data.commune;
+      const { confirmPassword, customCommune, commune, ...userData } = data;
+      
+      const payload = { 
+        ...userData, 
+        username: autoUsername, 
+        location: finalLocation 
+      };
+
+      const res = await apiRequest('POST', '/api/register', payload);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      if (data.token) {
+        login(data.user, data.token); // Synchronisation immédiate de la session
+        toast({ title: "Bienvenue !", description: "Votre compte Agri-Connect est prêt." });
+        
+        // Redirection intelligente selon le rôle (RBAC)
+        navigate(data.user.userType === 'farmer' ? '/farmer/dashboard' : '/buyer/dashboard');
       }
     },
-    onError: (error) => {
-      toast({
-        title: "Erreur d'inscription",
-        description: error.message || "Une erreur est survenue lors de l'inscription",
-        variant: "destructive",
+    onError: (error: any) => {
+      toast({ 
+        title: "Échec", 
+        description: error.message || "Erreur lors de la création du compte.", 
+        variant: "destructive" 
       });
     },
   });
 
-  const onSubmit = (data: RegisterFormData) => {
-    registerMutation.mutate({ ...data, userType });
-  };
-
   return (
-    <div className="min-h-screen bg-agri-gray py-12">
-      <div className="container mx-auto px-4">
-        <div className="max-w-2xl mx-auto">
-          {/* Header */}
-          <div className="text-center mb-8">
-            <Link href="/">
-              <div className="flex items-center justify-center space-x-3 mb-4">
-                <div className="w-12 h-12 bg-agri-green rounded-full flex items-center justify-center">
-                  <Sprout className="text-white text-xl" />
-                </div>
-                <h1 className="text-2xl font-bold text-agri-green">Agri-Connect RDC</h1>
-              </div>
-            </Link>
-            <h2 className="text-3xl font-bold text-gray-800 mb-2">Créer un compte</h2>
-            <p className="text-gray-600">Rejoignez notre communauté agricole</p>
+    <div className="min-h-screen bg-background text-foreground flex flex-col justify-center py-12 px-4 transition-colors duration-300">
+      <div className="max-w-xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-700">
+        
+        {/* Logo & Branding */}
+        <div className="text-center space-y-3">
+          <Link href="/">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-primary text-white rounded-2xl shadow-xl cursor-pointer hover:rotate-6 transition-transform">
+              <Sprout size={32} />
+            </div>
+          </Link>
+          <h1 className="text-3xl font-black tracking-tighter">Créer mon compte</h1>
+          <div className="flex items-center justify-center gap-2 text-primary font-bold text-[10px] uppercase tracking-[0.2em]">
+            <ShieldCheck size={14} /> Inscription Sécurisée
           </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Inscription</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {/* User Type Selection */}
-              <Tabs value={userType} onValueChange={(value) => setUserType(value as 'farmer' | 'buyer')} className="mb-6">
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="farmer" className="flex items-center space-x-2">
-                    <Tractor className="w-4 h-4" />
-                    <span>Agriculteur</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="buyer" className="flex items-center space-x-2">
-                    <ShoppingBasket className="w-4 h-4" />
-                    <span>Acheteur</span>
-                  </TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="farmer" className="mt-4">
-                  <div className="bg-agri-green/10 border border-agri-green/20 rounded-lg p-4">
-                    <h3 className="font-semibold text-agri-green mb-2">Compte Agriculteur</h3>
-                    <p className="text-sm text-gray-600">
-                      Vendez vos produits directement aux consommateurs, gérez votre stock et développez votre activité.
-                    </p>
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="buyer" className="mt-4">
-                  <div className="bg-agri-orange/10 border border-agri-orange/20 rounded-lg p-4">
-                    <h3 className="font-semibold text-agri-orange mb-2">Compte Acheteur</h3>
-                    <p className="text-sm text-gray-600">
-                      Achetez des produits frais directement auprès des producteurs locaux et soutenez l'agriculture congolaise.
-                    </p>
-                  </div>
-                </TabsContent>
-              </Tabs>
-
-              {/* Registration Form */}
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                  {/* Personal Information */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="firstName"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Prénom *</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Votre prénom" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="lastName"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Nom *</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Votre nom" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-
-                  <FormField
-                    control={form.control}
-                    name="username"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Nom d'utilisateur *</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Choisissez un nom d'utilisateur" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Email *</FormLabel>
-                        <FormControl>
-                          <Input type="email" placeholder="votre@email.com" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="phone"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Téléphone</FormLabel>
-                        <FormControl>
-                          <Input placeholder="+243 XXX XXX XXX" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="location"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Localisation</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Ville, commune..." {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  {/* Password */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="password"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Mot de passe *</FormLabel>
-                          <FormControl>
-                            <Input type="password" placeholder="Mot de passe" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="confirmPassword"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Confirmer le mot de passe *</FormLabel>
-                          <FormControl>
-                            <Input type="password" placeholder="Confirmer le mot de passe" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-
-                  <Button 
-                    type="submit" 
-                    className="w-full bg-agri-orange hover:bg-agri-orange/90"
-                    disabled={registerMutation.isPending}
-                  >
-                    {registerMutation.isPending ? "Création en cours..." : "Créer mon compte"}
-                  </Button>
-                </form>
-              </Form>
-
-              {/* Login Link */}
-              <div className="text-center mt-6">
-                <p className="text-gray-600">
-                  Vous avez déjà un compte ?{" "}
-                  <Link href="/login">
-                    <span className="text-agri-green hover:underline cursor-pointer font-semibold">
-                      Connectez-vous
-                    </span>
-                  </Link>
-                </p>
-              </div>
-            </CardContent>
-          </Card>
         </div>
+
+        <Card className="border-border bg-card shadow-2xl rounded-[2rem] overflow-hidden border-2">
+          <CardHeader className="bg-muted/30 border-b pb-6 text-center">
+            <CardTitle className="text-lg uppercase tracking-widest font-black text-primary">Rejoignez la communauté</CardTitle>
+          </CardHeader>
+          
+          <CardContent className="pt-8 space-y-6">
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(data => registerMutation.mutate(data), (err) => {
+                console.error("Erreurs validation:", err);
+                toast({ title: "Champs requis", description: "Veuillez vérifier les informations saisies.", variant: "destructive"});
+              })} className="space-y-6">
+                
+                {/* 🎭 SÉLECTION DU RÔLE */}
+                <FormField
+                  control={form.control}
+                  name="userType"
+                  render={({ field }) => (
+                    <Tabs value={field.value} onValueChange={field.onChange} className="w-full">
+                      <TabsList className="grid w-full grid-cols-2 h-14 bg-muted p-1 rounded-xl">
+                        <TabsTrigger value="farmer" className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white font-black gap-2 text-xs uppercase">
+                          <Tractor size={16} /> Agriculteur
+                        </TabsTrigger>
+                        <TabsTrigger value="buyer" className="rounded-lg data-[state=active]:bg-brand-orange data-[state=active]:text-white font-black gap-2 text-xs uppercase">
+                          <ShoppingBasket size={16} /> Acheteur
+                        </TabsTrigger>
+                      </TabsList>
+                    </Tabs>
+                  )}
+                />
+
+                {/* IDENTITÉ */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField control={form.control} name="firstName" render={({ field }) => (
+                    <FormItem><FormLabel className="font-bold">Prénom *</FormLabel>
+                    <FormControl><Input placeholder="Prénom" className="h-11 bg-background rounded-xl" {...field} /></FormControl></FormItem>
+                  )} />
+                  <FormField control={form.control} name="lastName" render={({ field }) => (
+                    <FormItem><FormLabel className="font-bold">Nom *</FormLabel>
+                    <FormControl><Input placeholder="Nom" className="h-11 bg-background rounded-xl" {...field} /></FormControl></FormItem>
+                  )} />
+                </div>
+
+                <FormField control={form.control} name="email" render={({ field }) => (
+                  <FormItem><FormLabel className="font-bold">Email *</FormLabel>
+                  <FormControl><Input type="email" placeholder="votre@email.cd" className="h-11 bg-background rounded-xl" {...field} /></FormControl></FormItem>
+                )} />
+
+                {/* 📍 ZONE DE RÉSIDENCE / PRODUCTION */}
+                <div className="space-y-4 p-5 bg-muted/20 rounded-[1.5rem] border-2 border-dashed">
+                  <FormField control={form.control} name="commune" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2 font-black text-[10px] uppercase tracking-widest text-muted-foreground">
+                        <MapPin size={14} className="text-primary"/> 
+                        {userType === 'farmer' ? "Zone de production" : "Localisation (Lubumbashi)"}
+                      </FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger className="bg-background h-11 rounded-xl"><SelectValue placeholder="Choisir une zone..." /></SelectTrigger>
+                        </FormControl>
+                        <SelectContent className="rounded-xl">
+                          {COMMUNE_LIST.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </FormItem>
+                  )} />
+
+                  {selectedCommune === "Autre" && (
+                    <FormField control={form.control} name="customCommune" render={({ field }) => (
+                      <FormItem className="animate-in slide-in-from-top-2">
+                        <FormControl><Input placeholder="Précisez votre quartier ou village..." className="h-11 bg-background border-primary/30 rounded-xl" {...field} /></FormControl>
+                      </FormItem>
+                    )} />
+                  )}
+                </div>
+
+                {/* SÉCURITÉ + ŒIL */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField control={form.control} name="password" render={({ field }) => (
+                    <FormItem><FormLabel className="font-bold">Mot de passe</FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <Input type={showPass ? "text" : "password"} className="h-11 bg-background pr-10 rounded-xl" {...field} />
+                        <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-3 top-3 text-slate-400 hover:text-primary transition-colors">
+                          {showPass ? <EyeOff size={18}/> : <Eye size={18}/>}
+                        </button>
+                      </div>
+                    </FormControl></FormItem>
+                  )} />
+                  <FormField control={form.control} name="confirmPassword" render={({ field }) => (
+                    <FormItem><FormLabel className="font-bold">Confirmation</FormLabel>
+                    <FormControl><Input type="password" placeholder="••••••••" className="h-11 bg-background rounded-xl" {...field} /></FormControl></FormItem>
+                  )} />
+                </div>
+
+                <Button 
+                  type="submit" 
+                  className={cn(
+                    "w-full h-16 text-lg font-black shadow-xl transition-all active:scale-95 rounded-2xl uppercase tracking-widest",
+                    userType === 'farmer' ? "bg-primary" : "bg-brand-orange text-white"
+                  )}
+                  disabled={registerMutation.isPending}
+                >
+                  {registerMutation.isPending ? <Loader2 className="animate-spin" /> : <><UserPlus className="mr-2" /> CRÉER MON COMPTE</>}
+                </Button>
+              </form>
+            </Form>
+
+            <div className="mt-8 text-center border-t pt-6">
+              <p className="text-muted-foreground text-sm font-medium">Déjà membre ? <Link href="/login" className="text-primary font-bold underline ml-1">Connectez-vous ici</Link></p>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <p className="text-center text-[10px] text-muted-foreground uppercase tracking-[0.4em] font-black opacity-30">
+          Système de Marketing Agricole RDC • 2025
+        </p>
       </div>
     </div>
   );

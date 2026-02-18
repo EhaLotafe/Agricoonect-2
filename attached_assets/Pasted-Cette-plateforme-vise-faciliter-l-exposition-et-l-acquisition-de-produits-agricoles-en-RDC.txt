@@ -1,0 +1,320 @@
+Cette plateforme vise à faciliter l’exposition et l’acquisition de produits agricoles en RDC, avec un système hybride (vente directe + mise en relation) accessible via web et USSD/SMS.
+
+1. Architecture générale
+🧱 Technologies choisies :
+Frontend Web : React + TailwindCSS
+
+Backend : À définir (recommandé : Node.js/Express ou Laravel)
+
+Base de données : PostgreSQL ou MongoDB (selon logique relationnelle ou orientée documents)
+
+USSD/SMS Gateway : à intégrer (ex : Africa's Talking, Twilio, ou Orange/Airtel APIs)
+
+Hébergement : VPS ou cloud (Scaleway, DigitalOcean, AWS, selon budget)
+
+2. Logique fonctionnelle principale
+A. Double Mode de Vente
+Mode 1 : Vente directe (si l’utilisateur fait confiance à l’autre partie)
+
+Mode 2 : Mise en relation (vérification, contact et confirmation manuelle avant transaction)
+
+3. Acteurs du système
+👨‍🌾 Agriculteur (Producteur)
+Crée un compte
+
+Ajoute ses produits agricoles (type, quantité, prix, description, photos, zone géographique)
+
+Choisit le mode de vente :
+
+Vente directe (avec note “disponible immédiatement”)
+
+Mise en relation (le système facilite le contact avec l’acheteur)
+
+Suit les commandes reçues
+
+Met à jour son stock ou archive ses offres
+
+Peut recevoir des évaluations de la part des acheteurs
+
+🛒 Acheteur
+Navigue sur les offres sans compte (consultation simple)
+
+Crée un compte pour passer commande ou contacter un producteur
+
+Filtre les offres par zone, prix, produit, disponibilité
+
+Peut initier une commande (vente directe) ou demande de mise en relation
+
+Donne une note/commentaire après réception du produit
+
+🧑‍💼 Administrateur
+Valide manuellement ou automatiquement certains profils (optionnel)
+
+Modère les publications
+
+Gère les utilisateurs (bloquer, suspendre, vérifier)
+
+Suit les statistiques générales de la plateforme (offres, ventes, inscriptions)
+
+Implémente des règles de publication ou partenariats futurs (coopératives, ONG, etc.)
+
+4. Interfaces / Pages Web
+Interface publique
+Accueil (avec recherche de produits/agriculteurs)
+
+Liste des produits agricoles disponibles
+
+Fiche produit
+
+Connexion / Inscription
+
+FAQ / À propos / Contact
+
+Interface Agriculteur
+Tableau de bord (statistiques de vues, commandes, stock)
+
+Gestion des produits (ajout, modification, suppression)
+
+Historique des ventes
+
+Profil et coordonnées
+
+Système de messagerie intégrée (à développer après MVP)
+
+Interface Acheteur
+Tableau de bord (commandes passées, produits favoris, messages)
+
+Liste des commandes en cours
+
+Système d’évaluation des produits
+
+Détails du profil et préférences
+
+Interface Admin
+Tableau de bord global
+
+Liste des utilisateurs
+
+Liste des produits
+
+Rapports & statistiques
+
+Paramètres de configuration
+
+5. Fonction USSD/SMS
+Objectif : consultation des offres pour les zones rurales sans internet.
+
+USSD Menu
+markdown
+Copier le code
+1. Voir produits par catégorie
+2. Voir produits par zone
+3. Voir top vendeurs
+4. Informations utiles
+Exemple de réponse :
+
+yaml
+Copier le code
+Tomates - 50kg - 35.000 FC
+Producteur : KASONGO J.
+Zone : Kipushi
+Contacter : 0991234567
+6. Modules secondaires (à prévoir dans le futur)
+Paiement mobile (Airtel, M-Pesa) pour automatiser certaines transactions
+
+Livraison / Logistique (via partenariat avec sociétés locales)
+
+Programme de fidélité / incitation pour agriculteurs actifs
+
+Formation ou assistance via chat/vidéo
+
+7. Priorités MVP (Minimum Viable Product)
+Fonctionnalités essentielles à finaliser avant le 7 août :
+Création de compte
+
+Publication d’une offre (agriculteur)
+
+Consultation des offres (acheteur)
+
+Filtrage des produits
+
+Commande directe OU demande de mise en relation
+
+USSD menu simple
+
+Admin basique (visualisation des offres, utilisateurs)
+
+8. Identité & marketing
+Nom : Agri-Connect RDC
+
+Slogan : “Relions les champs aux villes”
+
+Couleurs : Vert (nature), Orange (dynamisme), Blanc (fiabilité)
+
+
+
+================================================================================================
+
+
+
+# Documentation API Backend — AgriConnect
+
+## Introduction
+
+Ce backend expose une API RESTful pour la gestion d’une plateforme de mise en relation entre agriculteurs (farmers), acheteurs (buyers) et administrateurs (admin). Elle permet la gestion des utilisateurs, produits agricoles, commandes, avis, contacts, ainsi que la consultation de statistiques.
+
+---
+
+## Base URL
+
+* En local : `http://localhost:5000/api`
+* En production : À définir selon déploiement
+
+---
+
+## Authentification
+
+* Méthode : **Token JWT** (à implémenter, actuellement stub)
+* Endpoints `/register` et `/login` sont publics.
+* Les autres endpoints protégés nécessitent un header HTTP `Authorization: Bearer <token>`.
+
+---
+
+## Routes
+
+### Utilisateurs (Users)
+
+| Méthode | Endpoint       | Description                      | Protégé ? | Payload / Query Param                                                                            |
+| ------- | -------------- | -------------------------------- | --------- | ------------------------------------------------------------------------------------------------ |
+| POST    | `/register`    | Création d’un nouvel utilisateur | Non       | `{ username, email, password, firstName, lastName, phone?, userType, location?, profileImage? }` |
+| POST    | `/login`       | Connexion                        | Non       | `{ email, password }`                                                                            |
+| GET     | `/admin/users` | Liste de tous les utilisateurs   | Oui       | —                                                                                                |
+
+---
+
+### Produits (Products)
+
+| Méthode | Endpoint                      | Description                 | Protégé ? | Payload / Query Param                                                                                      |
+| ------- | ----------------------------- | --------------------------- | --------- | ---------------------------------------------------------------------------------------------------------- |
+| GET     | `/products`                   | Liste produits (filtrable)  | Non       | `category?`, `province?`, `search?`, `saleMode?`, `approved?`                                              |
+| GET     | `/products/:id`               | Détails d’un produit        | Non       | —                                                                                                          |
+| POST    | `/products`                   | Création produit            | Oui       | `{ farmerId, name, description?, category, price, unit, quantity, saleMode, location, province, images? }` |
+| PUT     | `/products/:id`               | Mise à jour produit         | Oui       | Champs modifiables selon schéma                                                                            |
+| DELETE  | `/products/:id`               | Suppression produit         | Oui       | —                                                                                                          |
+| GET     | `/farmer/:farmerId/products`  | Produits d’un agriculteur   | Non       | —                                                                                                          |
+| PUT     | `/admin/products/:id/approve` | Approbation produit (admin) | Oui       | —                                                                                                          |
+
+---
+
+### Commandes (Orders)
+
+| Méthode | Endpoint                   | Description                      | Protégé ? | Payload / Query Param                                                              |
+| ------- | -------------------------- | -------------------------------- | --------- | ---------------------------------------------------------------------------------- |
+| POST    | `/orders`                  | Création commande                | Oui       | `{ buyerId, productId, farmerId, quantity, totalPrice, deliveryAddress?, notes? }` |
+| GET     | `/buyer/:buyerId/orders`   | Commandes d’un acheteur          | Oui       | —                                                                                  |
+| GET     | `/farmer/:farmerId/orders` | Commandes reçues par agriculteur | Oui       | —                                                                                  |
+| PUT     | `/orders/:id`              | Mise à jour commande             | Oui       | Champs modifiables selon schéma                                                    |
+
+---
+
+### Avis (Reviews)
+
+| Méthode | Endpoint                       | Description               | Protégé ? | Payload / Query Param                                |
+| ------- | ------------------------------ | ------------------------- | --------- | ---------------------------------------------------- |
+| GET     | `/products/:productId/reviews` | Liste avis d’un produit   | Non       | —                                                    |
+| POST    | `/reviews`                     | Création d’un avis        | Oui       | `{ buyerId, productId, farmerId, rating, comment? }` |
+| GET     | `/products/:productId/rating`  | Note moyenne d’un produit | Non       | —                                                    |
+
+---
+
+### Contacts
+
+| Méthode | Endpoint                     | Description                    | Protégé ? | Payload / Query Param                                    |
+| ------- | ---------------------------- | ------------------------------ | --------- | -------------------------------------------------------- |
+| POST    | `/contacts`                  | Création contact (message)     | Oui       | `{ buyerId, productId, farmerId, message, buyerPhone? }` |
+| GET     | `/farmer/:farmerId/contacts` | Contacts reçus par agriculteur | Oui       | —                                                        |
+| PUT     | `/contacts/:id`              | Mise à jour contact            | Oui       | Champs modifiables selon schéma                          |
+
+---
+
+### Statistiques
+
+| Méthode | Endpoint | Description           | Protégé ? | Payload / Query Param |
+| ------- | -------- | --------------------- | --------- | --------------------- |
+| GET     | `/stats` | Statistiques globales | Oui       | —                     |
+
+---
+
+### Données statiques
+
+| Méthode | Endpoint      | Description                      | Protégé ? | Payload / Query Param |
+| ------- | ------------- | -------------------------------- | --------- | --------------------- |
+| GET     | `/categories` | Liste des catégories de produits | Non       | —                     |
+| GET     | `/provinces`  | Liste des provinces en RDC       | Non       | —                     |
+
+---
+
+## Modèles de données (extraits principaux)
+
+### Utilisateur (User)
+
+```json
+{
+  "id": 1,
+  "username": "nomutilisateur",
+  "email": "email@example.com",
+  "firstName": "Prénom",
+  "lastName": "Nom",
+  "phone": "+243990918934",
+  "userType": "farmer", // ou buyer, admin
+  "location": "Lubumbashi",
+  "profileImage": "url/image.jpg",
+  "isActive": true,
+  "createdAt": "2025-07-22T00:00:00Z",
+  "updatedAt": "2025-07-22T00:00:00Z"
+}
+```
+
+### Produit (Product)
+
+```json
+{
+  "id": 10,
+  "farmerId": 1,
+  "name": "Mangues fraîches",
+  "description": "Mangues du Katanga, bio",
+  "category": "Fruits",
+  "price": 1.50,
+  "unit": "kg",
+  "quantity": 100,
+  "availableQuantity": 80,
+  "saleMode": "direct",
+  "location": "Lubumbashi",
+  "province": "Haut-Katanga",
+  "images": ["url/image1.jpg", "url/image2.jpg"],
+  "isActive": true,
+  "isApproved": true,
+  "createdAt": "2025-07-22T00:00:00Z",
+  "updatedAt": "2025-07-22T00:00:00Z"
+}
+```
+
+---
+
+## Erreurs courantes
+
+* **400 Bad Request** : données invalides ou manque de paramètres requis.
+* **401 Unauthorized** : absence ou invalidité du token JWT.
+* **403 Forbidden** : accès refusé selon rôle utilisateur.
+* **404 Not Found** : ressource non trouvée.
+* **500 Internal Server Error** : erreur interne serveur.
+
+---
+
+## Recommandations
+
+* Implémenter une gestion complète des tokens JWT avec expiration et renouvellement.
+* Ajouter la gestion des rôles dans les middlewares de protection.
+* Documenter l’API avec Swagger ou Postman pour faciliter le frontend et l’intégration.
+* Prévoir la pagination sur les listes volumineuses (produits, commandes, contacts).
+

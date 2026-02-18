@@ -1,116 +1,57 @@
+/* 1. Imports obligatoires tout en haut */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: hsl(0, 0%, 100%);
-  --foreground: hsl(20, 14.3%, 4.1%);
-  --muted: hsl(60, 4.8%, 95.9%);
-  --muted-foreground: hsl(25, 5.3%, 44.7%);
-  --popover: hsl(0, 0%, 100%);
-  --popover-foreground: hsl(20, 14.3%, 4.1%);
-  --card: hsl(0, 0%, 100%);
-  --card-foreground: hsl(20, 14.3%, 4.1%);
-  --border: hsl(20, 5.9%, 90%);
-  --input: hsl(20, 5.9%, 90%);
-  --primary: hsl(130, 70%, 35%);
-  --primary-foreground: hsl(0, 0%, 100%);
-  --secondary: hsl(60, 4.8%, 95.9%);
-  --secondary-foreground: hsl(24, 9.8%, 10%);
-  --accent: hsl(60, 4.8%, 95.9%);
-  --accent-foreground: hsl(24, 9.8%, 10%);
-  --destructive: hsl(0, 84.2%, 60.2%);
-  --destructive-foreground: hsl(60, 9.1%, 97.8%);
-  --ring: hsl(20, 14.3%, 4.1%);
-  --radius: 0.5rem;
-  --agri-green: hsl(130, 70%, 35%);
-  --agri-green-light: hsl(122, 39%, 49%);
-  --agri-orange: hsl(36, 100%, 50%);
-  --agri-orange-light: hsl(36, 77%, 66%);
-  --agri-gray: hsl(0, 0%, 96%);
-}
-
-.dark {
-  --background: hsl(240, 10%, 3.9%);
-  --foreground: hsl(0, 0%, 98%);
-  --muted: hsl(240, 3.7%, 15.9%);
-  --muted-foreground: hsl(240, 5%, 64.9%);
-  --popover: hsl(240, 10%, 3.9%);
-  --popover-foreground: hsl(0, 0%, 98%);
-  --card: hsl(240, 10%, 3.9%);
-  --card-foreground: hsl(0, 0%, 98%);
-  --border: hsl(240, 3.7%, 15.9%);
-  --input: hsl(240, 3.7%, 15.9%);
-  --primary: hsl(130, 70%, 35%);
-  --primary-foreground: hsl(0, 0%, 100%);
-  --secondary: hsl(240, 3.7%, 15.9%);
-  --secondary-foreground: hsl(0, 0%, 98%);
-  --accent: hsl(240, 3.7%, 15.9%);
-  --accent-foreground: hsl(0, 0%, 98%);
-  --destructive: hsl(0, 62.8%, 30.6%);
-  --destructive-foreground: hsl(0, 0%, 98%);
-  --ring: hsl(240, 4.9%, 83.9%);
-  --radius: 0.5rem;
-  --agri-green: hsl(130, 70%, 35%);
-  --agri-green-light: hsl(122, 39%, 49%);
-  --agri-orange: hsl(36, 100%, 50%);
-  --agri-orange-light: hsl(36, 77%, 66%);
-  --agri-gray: hsl(240, 3.7%, 15.9%);
-}
-
 @layer base {
+  :root {
+    --radius: 0.5rem;
+    --background: 0 0% 97%;
+    --foreground: 20 14.3% 4.1%;
+    
+    /* Couleurs Agri-Connect */
+    --primary: 130 70% 35%;          /* agri-green */
+    --primary-foreground: 0 0% 100%;
+    --accent: 36 100% 50%;           /* agri-orange */
+    --accent-foreground: 0 0% 100%;
+    
+    --card: 0 0% 100%;
+    --card-foreground: 20 14.3% 4.1%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 46%;
+    --border: 20 5.9% 90%;
+    --input: 20 5.9% 90%;
+    --ring: 130 70% 35%;
+
+    /* Utilitaires spécifiques demandés pour compatibilité */
+    --agri-green: 130 70% 35%;
+    --agri-orange: 36 100% 50%;
+    --agri-gray: 0 0% 96%;
+  }
+
+  .dark {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 6%; /* Légèrement plus clair que le fond pour détacher les cartes */
+    --card-foreground: 0 0% 98%;
+    --muted: 240 4% 16%;
+    --muted-foreground: 240 5% 65%;
+    --border: 240 4% 16%;
+    --input: 240 4% 16%;
+    --primary: 130 70% 45%; /* Vert légèrement éclairci pour le contraste sombre */
+    --ring: 130 70% 45%;
+    --agri-gray: 240 3.7% 15.9%;
+  }
+
+  /* Transition fluide pour le changement de thème */
   * {
     @apply border-border;
+    transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
   }
 
   body {
-    @apply font-sans antialiased bg-background text-foreground;
-    font-family: 'Inter', sans-serif;
-  }
-}
-
-@layer utilities {
-  .bg-agri-green {
-    background-color: var(--agri-green);
-  }
-  
-  .bg-agri-green-light {
-    background-color: var(--agri-green-light);
-  }
-  
-  .bg-agri-orange {
-    background-color: var(--agri-orange);
-  }
-  
-  .bg-agri-orange-light {
-    background-color: var(--agri-orange-light);
-  }
-  
-  .bg-agri-gray {
-    background-color: var(--agri-gray);
-  }
-  
-  .text-agri-green {
-    color: var(--agri-green);
-  }
-  
-  .text-agri-orange {
-    color: var(--agri-orange);
-  }
-  
-  .border-agri-green {
-    border-color: var(--agri-green);
-  }
-  
-  .border-agri-orange {
-    border-color: var(--agri-orange);
-  }
-  
-  .hover\:bg-agri-green:hover {
-    background-color: var(--agri-green);
-  }
-  
-  .hover\:bg-agri-orange:hover {
-    background-color: var(--agri-orange);
+    @apply bg-background text-foreground font-sans antialiased;
   }
 }

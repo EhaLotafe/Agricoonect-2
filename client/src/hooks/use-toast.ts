@@ -1,3 +1,4 @@
+// client/src/hooks/use-toast.ts
 import * as React from "react"
 
 import type {
@@ -5,8 +6,10 @@ import type {
   ToastProps,
 } from "@/components/ui/toast"
 
-const TOAST_LIMIT = 1
-const TOAST_REMOVE_DELAY = 1000000
+
+// ✅ Ajustement du délai : 5 secondes est le standard pour une bonne UX
+const TOAST_LIMIT = 3
+const TOAST_REMOVE_DELAY = 5000 
 
 type ToasterToast = ToastProps & {
   id: string

@@ -1,372 +1,260 @@
-import type { Express } from "express";
-import { createServer, type Server } from "http";
-import { storage } from "./storage";
-import { insertUserSchema, insertProductSchema, insertOrderSchema, insertReviewSchema, insertContactSchema } from "@shared/schema";
+import express, { Request, Response, NextFunction } from "express";
+import { createServer, Server } from "http";
 import bcrypt from "bcrypt";
+import { storage } from "./storage";
+import {
+  insertUserSchema,
+  insertProductSchema,
+  insertOrderSchema,
+  insertReviewSchema,
+  insertContactSchema,
+  updateProductSchema,
+  updateOrderSchema,
+  updateContactSchema,
+} from "@shared/schema";
+import jwt from "jsonwebtoken";
+import uploadsRouter from "./uploads";
+import z from "zod";
 
-export async function registerRoutes(app: Express): Promise<Server> {
-  // Auth routes
-  app.post("/api/register", async (req, res) => {
-    try {
-      const userData = insertUserSchema.parse(req.body);
-      
-      // Check if user already exists
-      const existingUser = await storage.getUserByEmail(userData.email);
-      if (existingUser) {
-        return res.status(400).json({ message: "Un utilisateur avec cet email existe déjà" });
-      }
+const SECRET_KEY = process.env.JWT_SECRET || "lubum_agri_2025_secret";
 
-      // Hash password
-      const hashedPassword = await bcrypt.hash(userData.password, 10);
-      
-      const user = await storage.createUser({
-        ...userData,
-        password: hashedPassword,
-      });
+// --- MIDDLEWARES ---
 
-      // Remove password from response
-      const { password, ...userResponse } = user;
-      res.json(userResponse);
-    } catch (error) {
-      console.error("Registration error:", error);
-      res.status(400).json({ message: "Erreur lors de l'inscription" });
+const verifyToken = (req: Request, res: Response, next: NextFunction) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ message: "Authentification requise" });
+  }
+  const token = authHeader.split(" ")[1];
+  try {
+    const decoded = jwt.verify(token, SECRET_KEY);
+    (req as any).user = decoded;
+    next();
+  } catch (error) {
+    return res.status(403).json({ message: "Session expirée ou invalide" });
+  }
+};
+
+const checkRole = (roles: string[]) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const user = (req as any).user;
+    if (!user || !roles.includes(user.userType)) {
+      return res.status(403).json({ message: "Accès interdit : privilèges insuffisants" });
     }
-  });
+    next();
+  };
+};
 
-  app.post("/api/login", async (req, res) => {
+function errorHandler(err: any, _req: Request, res: Response, _next: NextFunction) {
+  console.error(err);
+  if (err?.name === "ZodError") {
+    return res.status(400).json({ message: "Erreur de validation", issues: err.issues });
+  }
+  res.status(err.status || 500).json({ message: err.message || "Erreur interne" });
+}
+
+export async function registerRoutes(app: express.Express): Promise<Server> {
+  
+  // --- AUTHENTIFICATION ---
+  // server/routes.ts
+
+app.post("/api/register", async (req, res, next) => {
+  try {
+    const userData = insertUserSchema.parse(req.body);
+    const existingUser = await storage.getUserByEmail(userData.email);
+    if (existingUser) return res.status(400).json({ message: "Email déjà utilisé" });
+
+    const hashedPassword = await bcrypt.hash(userData.password, 10);
+    const user = await storage.createUser({ ...userData, password: hashedPassword });
+    
+    // ✅ GÉNÉRATION DU TOKEN DÈS L'INSCRIPTION
+    const token = jwt.sign(
+      { id: user.id, email: user.email, userType: user.userType },
+      SECRET_KEY,
+      { expiresIn: "7d" }
+    );
+
+    const { password: _, ...userWithoutPassword } = user;
+    // On renvoie le pack complet : user + token
+    res.status(201).json({ user: userWithoutPassword, token });
+  } catch (error) { next(error); }
+});
+
+  app.post("/api/login", async (req, res, next) => {
     try {
       const { email, password } = req.body;
-      
       const user = await storage.getUserByEmail(email);
-      if (!user) {
+      if (!user || !(await bcrypt.compare(password, user.password))) {
         return res.status(401).json({ message: "Email ou mot de passe incorrect" });
       }
-
-      const validPassword = await bcrypt.compare(password, user.password);
-      if (!validPassword) {
-        return res.status(401).json({ message: "Email ou mot de passe incorrect" });
-      }
-
-      // Remove password from response
-      const { password: _, ...userResponse } = user;
-      res.json(userResponse);
-    } catch (error) {
-      console.error("Login error:", error);
-      res.status(500).json({ message: "Erreur lors de la connexion" });
-    }
+      const token = jwt.sign({ id: user.id, email: user.email, userType: user.userType }, SECRET_KEY, { expiresIn: "30d" });
+      const { password: _, ...userData } = user;
+      res.json({ token, user: userData });
+    } catch (error) { next(error); }
   });
 
-  // Product routes
-  app.get("/api/products", async (req, res) => {
-    try {
-      const { category, province, search, saleMode, approved } = req.query;
-      
-      const filters: any = {
-        isActive: true,
-      };
-      
-      if (approved !== 'false') {
-        filters.isApproved = true;
-      }
-      
-      if (category) filters.category = category as string;
-      if (province) filters.province = province as string;
-      if (search) filters.search = search as string;
-      if (saleMode) filters.saleMode = saleMode as string;
+  // --- PRODUITS ---
+  // server/routes.ts
 
+  // --- PRODUITS ---
+  app.get("/api/products", async (req, res, next) => {
+    try {
+      const { category, commune, province, search, approved } = req.query;
+      const filters: any = { isApproved: approved !== "false" };
+      if (category) filters.category = category;
+      if (commune) filters.commune = commune;
+      if (province) filters.province = province;
+      if (search) filters.search = search;
       const products = await storage.getAllProducts(filters);
       res.json(products);
-    } catch (error) {
-      console.error("Error fetching products:", error);
-      res.status(500).json({ message: "Erreur lors de la récupération des produits" });
-    }
+    } catch (error) { next(error); }
   });
 
-  app.get("/api/products/:id", async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const product = await storage.getProduct(id);
-      
-      if (!product) {
-        return res.status(404).json({ message: "Produit non trouvé" });
-      }
+  // server/routes.ts
 
-      res.json(product);
-    } catch (error) {
-      console.error("Error fetching product:", error);
-      res.status(500).json({ message: "Erreur lors de la récupération du produit" });
-    }
-  });
-
-  app.post("/api/products", async (req, res) => {
+app.post("/api/products", verifyToken, checkRole(['farmer', 'admin']), async (req, res, next) => {
     try {
-      const productData = insertProductSchema.parse(req.body);
+      // 1. On valide les données (Zod va maintenant convertir la date tout seul)
+      const data = insertProductSchema.parse(req.body);
       
-      const product = await storage.createProduct({
-        ...productData,
-        availableQuantity: productData.quantity,
+      // 2. On crée le produit avec l'ID de l'utilisateur connecté
+      const product = await storage.createProduct({ 
+        ...data, 
+        farmerId: (req as any).user.id,
+        availableQuantity: Number(data.quantity) // Sécurité conversion nombre
       });
-
-      res.json(product);
-    } catch (error) {
-      console.error("Error creating product:", error);
-      res.status(400).json({ message: "Erreur lors de la création du produit" });
-    }
-  });
-
-  app.put("/api/products/:id", async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const productData = req.body;
       
-      const product = await storage.updateProduct(id, productData);
-      res.json(product);
-    } catch (error) {
-      console.error("Error updating product:", error);
-      res.status(400).json({ message: "Erreur lors de la mise à jour du produit" });
+      res.status(201).json(product);
+    } catch (error) { 
+      console.error("❌ Erreur de publication:", error);
+      next(error); 
     }
-  });
+});
 
-  app.delete("/api/products/:id", async (req, res) => {
+  // 🔄 Route de Synchronisation (Argument Mémoire)
+  app.post("/api/products/sync", verifyToken, checkRole(['farmer', 'admin']), async (req, res, next) => {
     try {
-      const id = parseInt(req.params.id);
-      await storage.deleteProduct(id);
-      res.json({ message: "Produit supprimé avec succès" });
-    } catch (error) {
-      console.error("Error deleting product:", error);
-      res.status(500).json({ message: "Erreur lors de la suppression du produit" });
-    }
+      // On valide un tableau de produits
+      const productsArray = z.array(insertProductSchema.omit({ farmerId: true })).parse(req.body);
+      const created = [];
+      
+      for (const p of productsArray) {
+        const newProd = await storage.createProduct({ 
+          ...p, 
+          farmerId: (req as any).user.id,
+          availableQuantity: Number(p.quantity)
+        });
+        created.push(newProd);
+      }
+      res.status(201).json({ success: true, count: created.length });
+    } catch (error) { next(error); }
   });
-
-  app.get("/api/farmer/:farmerId/products", async (req, res) => {
+  app.get("/api/farmer/:farmerId/products", verifyToken, async (req, res, next) => {
     try {
-      const farmerId = parseInt(req.params.farmerId);
-      const products = await storage.getProductsByFarmer(farmerId);
+      const products = await storage.getProductsByFarmer(Number(req.params.farmerId));
       res.json(products);
-    } catch (error) {
-      console.error("Error fetching farmer products:", error);
-      res.status(500).json({ message: "Erreur lors de la récupération des produits de l'agriculteur" });
-    }
+    } catch (error) { next(error); }
   });
 
-  // Order routes
-  app.post("/api/orders", async (req, res) => {
+  // --- COMMANDES ---
+  app.post("/api/orders", verifyToken, async (req, res, next) => {
     try {
       const orderData = insertOrderSchema.parse(req.body);
-      
-      // Check if product has enough quantity
       const product = await storage.getProduct(orderData.productId);
       if (!product || product.availableQuantity < orderData.quantity) {
-        return res.status(400).json({ message: "Quantité insuffisante disponible" });
+        return res.status(400).json({ message: "Stock insuffisant" });
       }
-
-      const order = await storage.createOrder(orderData);
-      
-      // Update product available quantity
-      await storage.updateProduct(orderData.productId, {
-        availableQuantity: product.availableQuantity - orderData.quantity,
-      });
-
-      res.json(order);
-    } catch (error) {
-      console.error("Error creating order:", error);
-      res.status(400).json({ message: "Erreur lors de la création de la commande" });
-    }
+      const order = await storage.createOrder({ ...orderData, buyerId: (req as any).user.id });
+      await storage.updateProduct(product.id, { availableQuantity: product.availableQuantity - orderData.quantity });
+      res.status(201).json(order);
+    } catch (error) { next(error); }
   });
 
-  app.get("/api/buyer/:buyerId/orders", async (req, res) => {
+  app.get("/api/buyer/:buyerId/orders", verifyToken, async (req, res, next) => {
     try {
-      const buyerId = parseInt(req.params.buyerId);
-      const orders = await storage.getOrdersByBuyer(buyerId);
+      const orders = await storage.getOrdersByBuyer(Number(req.params.buyerId));
       res.json(orders);
-    } catch (error) {
-      console.error("Error fetching buyer orders:", error);
-      res.status(500).json({ message: "Erreur lors de la récupération des commandes" });
-    }
+    } catch (error) { next(error); }
   });
 
-  app.get("/api/farmer/:farmerId/orders", async (req, res) => {
+  app.get("/api/farmer/:farmerId/orders", verifyToken, async (req, res, next) => {
     try {
-      const farmerId = parseInt(req.params.farmerId);
-      const orders = await storage.getOrdersByFarmer(farmerId);
+      const orders = await storage.getOrdersByFarmer(Number(req.params.farmerId));
       res.json(orders);
-    } catch (error) {
-      console.error("Error fetching farmer orders:", error);
-      res.status(500).json({ message: "Erreur lors de la récupération des commandes" });
-    }
+    } catch (error) { next(error); }
   });
 
-  app.put("/api/orders/:id", async (req, res) => {
+  app.patch("/api/orders/:id", verifyToken, async (req, res, next) => {
     try {
-      const id = parseInt(req.params.id);
-      const orderData = req.body;
-      
-      const order = await storage.updateOrder(id, orderData);
-      res.json(order);
-    } catch (error) {
-      console.error("Error updating order:", error);
-      res.status(400).json({ message: "Erreur lors de la mise à jour de la commande" });
-    }
+      const updateData = updateOrderSchema.parse(req.body);
+      const updated = await storage.updateOrder(Number(req.params.id), updateData);
+      res.json(updated);
+    } catch (error) { next(error); }
   });
 
-  // Review routes
-  app.get("/api/products/:productId/reviews", async (req, res) => {
+  // --- AVIS & CONTACTS ---
+  app.get("/api/products/:productId/reviews", async (req, res, next) => {
     try {
-      const productId = parseInt(req.params.productId);
-      const reviews = await storage.getReviewsByProduct(productId);
+      const reviews = await storage.getReviewsByProduct(Number(req.params.productId));
       res.json(reviews);
-    } catch (error) {
-      console.error("Error fetching reviews:", error);
-      res.status(500).json({ message: "Erreur lors de la récupération des avis" });
-    }
+    } catch (error) { next(error); }
   });
 
-  app.post("/api/reviews", async (req, res) => {
+  app.post("/api/reviews", verifyToken, async (req, res, next) => {
     try {
-      const reviewData = insertReviewSchema.parse(req.body);
-      const review = await storage.createReview(reviewData);
-      res.json(review);
-    } catch (error) {
-      console.error("Error creating review:", error);
-      res.status(400).json({ message: "Erreur lors de la création de l'avis" });
-    }
+      const review = insertReviewSchema.parse(req.body);
+      const created = await storage.createReview({ ...review, buyerId: (req as any).user.id });
+      res.status(201).json(created);
+    } catch (error) { next(error); }
   });
 
-  app.get("/api/products/:productId/rating", async (req, res) => {
+  app.post("/api/contacts", verifyToken, async (req, res, next) => {
     try {
-      const productId = parseInt(req.params.productId);
-      const rating = await storage.getAverageRating(productId);
-      res.json({ rating });
-    } catch (error) {
-      console.error("Error fetching rating:", error);
-      res.status(500).json({ message: "Erreur lors de la récupération de la note" });
-    }
+      const contact = insertContactSchema.parse(req.body);
+      const created = await storage.createContact({ ...contact, buyerId: (req as any).user.id });
+      res.status(201).json(created);
+    } catch (error) { next(error); }
   });
 
-  // Contact routes
-  app.post("/api/contacts", async (req, res) => {
+  app.get("/api/farmer/:farmerId/contacts", verifyToken, async (req, res, next) => {
     try {
-      const contactData = insertContactSchema.parse(req.body);
-      const contact = await storage.createContact(contactData);
-      res.json(contact);
-    } catch (error) {
-      console.error("Error creating contact:", error);
-      res.status(400).json({ message: "Erreur lors de la création du contact" });
-    }
-  });
-
-  app.get("/api/farmer/:farmerId/contacts", async (req, res) => {
-    try {
-      const farmerId = parseInt(req.params.farmerId);
-      const contacts = await storage.getContactsByFarmer(farmerId);
+      const contacts = await storage.getContactsByFarmer(Number(req.params.farmerId));
       res.json(contacts);
-    } catch (error) {
-      console.error("Error fetching contacts:", error);
-      res.status(500).json({ message: "Erreur lors de la récupération des contacts" });
-    }
+    } catch (error) { next(error); }
   });
 
-  app.put("/api/contacts/:id", async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const contactData = req.body;
-      
-      const contact = await storage.updateContact(id, contactData);
-      res.json(contact);
-    } catch (error) {
-      console.error("Error updating contact:", error);
-      res.status(400).json({ message: "Erreur lors de la mise à jour du contact" });
-    }
+  // --- ADMIN ---
+  app.get("/api/admin/users", verifyToken, checkRole(['admin']), async (_req, res, next) => {
+    try { res.json(await storage.getAllUsers()); } catch (error) { next(error); }
   });
 
-  // Admin routes
-  app.get("/api/admin/users", async (req, res) => {
-    try {
-      const users = await storage.getAllUsers();
-      res.json(users);
-    } catch (error) {
-      console.error("Error fetching users:", error);
-      res.status(500).json({ message: "Erreur lors de la récupération des utilisateurs" });
-    }
+  app.patch("/api/admin/products/:id/approve", verifyToken, checkRole(['admin']), async (req, res, next) => {
+    try { res.json(await storage.approveProduct(Number(req.params.id))); } catch (error) { next(error); }
   });
 
-  app.get("/api/admin/products", async (req, res) => {
-    try {
-      const products = await storage.getAllProducts({ isActive: true });
-      res.json(products);
-    } catch (error) {
-      console.error("Error fetching admin products:", error);
-      res.status(500).json({ message: "Erreur lors de la récupération des produits" });
-    }
+  app.get("/api/stats", async (_req, res, next) => {
+    try { res.json(await storage.getStats()); } catch (error) { next(error); }
   });
+// --- ADMINISTRATION : GESTION UTILISATEURS ---
+app.put("/api/admin/users/:id", verifyToken, checkRole(['admin']), async (req, res, next) => {
+  try {
+    const userId = Number(req.params.id);
+    const updateData = req.body; // Zod validation can be added here
+    const updatedUser = await storage.updateUser(userId, updateData);
+    res.json(updatedUser);
+  } catch (error) { next(error); }
+});
+  // --- DONNÉES STATIQUES ---
+app.get("/api/communes", (_req, res) => {
+  res.json(["Annexe", "Lubumbashi", "Kenya", "Katuba", "Kamalondo", "Kampemba", "Ruashi"]);
+});
 
-  app.put("/api/admin/products/:id/approve", async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const product = await storage.approveProduct(id);
-      res.json(product);
-    } catch (error) {
-      console.error("Error approving product:", error);
-      res.status(400).json({ message: "Erreur lors de l'approbation du produit" });
-    }
-  });
+app.get("/api/categories", (_req, res) => {
+  res.json(["Maraîchage", "Céréales", "Légumineuses", "Tubercules", "Élevage", "Fruits"]);
+});
 
-  // Statistics
-  app.get("/api/stats", async (req, res) => {
-    try {
-      const stats = await storage.getStats();
-      res.json(stats);
-    } catch (error) {
-      console.error("Error fetching stats:", error);
-      res.status(500).json({ message: "Erreur lors de la récupération des statistiques" });
-    }
-  });
+  app.use("/api/uploads", uploadsRouter);
+  app.use(errorHandler);
 
-  // Categories and provinces (static data for DRC)
-  app.get("/api/categories", async (req, res) => {
-    res.json([
-      "Légumes",
-      "Fruits",
-      "Céréales",
-      "Légumineuses",
-      "Tubercules",
-      "Épices",
-      "Produits laitiers",
-      "Viandes",
-      "Poissons",
-      "Autres"
-    ]);
-  });
-
-  app.get("/api/provinces", async (req, res) => {
-    res.json([
-      "Kinshasa",
-      "Haut-Katanga",
-      "Lualaba",
-      "Kasaï-Oriental",
-      "Kasaï",
-      "Kasaï-Central",
-      "Lomami",
-      "Sankuru",
-      "Maniema",
-      "Sud-Kivu",
-      "Nord-Kivu",
-      "Ituri",
-      "Haut-Uele",
-      "Bas-Uele",
-      "Tshopo",
-      "Mongala",
-      "Sud-Ubangi",
-      "Nord-Ubangi",
-      "Équateur",
-      "Tshuapa",
-      "Mai-Ndombe",
-      "Kwilu",
-      "Kwango",
-      "Kongo-Central"
-    ]);
-  });
-
-  const httpServer = createServer(app);
-  return httpServer;
+  return createServer(app);
 }

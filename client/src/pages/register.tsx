@@ -67,13 +67,24 @@ export default function Register() {
       const res = await apiRequest('POST', '/api/register', payload);
       return res.json();
     },
+
     onSuccess: (data) => {
-      if (data.token) {
-        login(data.user, data.token); // Synchronisation immédiate de la session
-        toast({ title: "Bienvenue !", description: "Votre compte Agri-Connect est prêt." });
-        
-        // Redirection intelligente selon le rôle (RBAC)
-        navigate(data.user.userType === 'farmer' ? '/farmer/dashboard' : '/buyer/dashboard');
+      const { token, user } = data;
+      login(user, token); // On connecte l'utilisateur
+
+      toast({
+        title: "Connexion réussie",
+        description: `Bienvenue, ${user.firstName} !`,
+      });
+
+      // 🚀 REDIRECTION STRATÉGIQUE (Argument UX du mémoire)
+      if (user.userType === "admin") {
+        navigate("/panel/dashboard");
+      } else if (user.userType === "farmer") {
+        navigate("/farmer/dashboard");
+      } else {
+        // L'acheteur arrive directement sur le marché !
+        navigate("/products"); 
       }
     },
     onError: (error: any) => {

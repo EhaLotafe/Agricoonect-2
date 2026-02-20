@@ -52,14 +52,23 @@ export default function Login() {
       return res.json();
     },
     onSuccess: (data) => {
-      const { token, user: userData } = data;
-      login(userData, token); // Synchronisation globale du contexte
+      const { token, user } = data;
+      login(user, token); // On connecte l'utilisateur
 
       toast({
         title: "Connexion réussie",
-        description: `Content de vous revoir sur Agri-Connect, ${userData.firstName} !`,
+        description: `Bienvenue, ${user.firstName} !`,
       });
-      // La redirection sera gérée par le useEffect ci-dessus
+
+      // 🚀 REDIRECTION STRATÉGIQUE (Argument UX du mémoire)
+      if (user.userType === "admin") {
+        navigate("/panel/dashboard");
+      } else if (user.userType === "farmer") {
+        navigate("/farmer/dashboard");
+      } else {
+        // L'acheteur arrive directement sur le marché !
+        navigate("/products"); 
+      }
     },
     onError: (error: any) => {
       toast({

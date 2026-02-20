@@ -8,7 +8,7 @@ import { db } from "./db";
 import { eq, and, desc, like, sql } from "drizzle-orm";
 import { aliasedTable } from "drizzle-orm";
 
-// Alias obligatoires pour joindre la table users deux fois dans une seule requête
+// Alias pour les jointures complexes (Acheteur / Vendeur)
 const farmers = aliasedTable(users, "farmers");
 const buyers = aliasedTable(users, "buyers");
 
@@ -23,15 +23,9 @@ export interface IStorage {
 
   // Produits
   getProduct(id: number): Promise<Product | undefined>;
-  getProductWithFarmer(id: number): Promise<(Product & { farmer: User }) | undefined>;
+  getProductWithFarmer(id: number): Promise<any>;
   getProductsByFarmer(farmerId: number): Promise<Product[]>;
-  getAllProducts(filters?: {
-    category?: string;
-    province?: string;
-    commune?: string; // Ajout Lubumbashi
-    search?: string;
-    isApproved?: boolean;
-  }): Promise<Product[]>;
+  getAllProducts(filters?: any): Promise<any[]>; // Signature propre
   createProduct(product: InsertProduct): Promise<Product>;
   updateProduct(id: number, product: Partial<InsertProduct>): Promise<Product>;
   deleteProduct(id: number): Promise<void>;
@@ -78,11 +72,13 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(users).orderBy(desc(users.createdAt));
   }
 
-  // --- PRODUITS (Avec logique Lubumbashi & Fraîcheur) ---
+  // --- PRODUITS ---
   async getProduct(id: number) {
     const [product] = await db.select().from(products).where(eq(products.id, id));
     return product;
   }
+
+  // server/storage.ts
 
   async getProductWithFarmer(id: number) {
     const result = await db
@@ -90,43 +86,49 @@ export class DatabaseStorage implements IStorage {
       .from(products)
       .leftJoin(users, eq(products.farmerId, users.id))
       .where(eq(products.id, id));
+
     if (result.length === 0) return undefined;
-    return { ...result[0].product, farmer: result[0].farmer! };
+    // On retourne le produit en y injectant les infos du farmer
+    return { 
+      ...result[0].product, 
+      farmer: result[0].farmer 
+    };
   }
 
-  // server/storage.ts
-
   async getAllProducts(filters: any) {
-  const conditions = [];
-  if (filters?.isApproved !== undefined) conditions.push(eq(products.isApproved, filters.isApproved));
-  if (filters?.category) conditions.push(eq(products.category, filters.category));
-  if (filters?.commune) conditions.push(eq(products.commune, filters.commune));
-  if (filters?.search) conditions.push(like(products.name, `%${filters.search}%`));
+    const conditions = [];
+    
+    // Logique de filtrage intelligente (Admin vs Public)
+    if (filters?.isApproved === true) conditions.push(eq(products.isApproved, true));
+    if (filters?.isApproved === false) conditions.push(eq(products.isApproved, false));
+    // Si filters.isApproved est undefined, on ne filtre pas (comportement Admin)
 
-  // ✅ JOINTURE avec la table users pour inclure l'objet farmer
-  const query = db
-    .select({
-      product: products,
-      farmer: {
-        id: users.id,
-        firstName: users.firstName,
-        lastName: users.lastName,
-        phone: users.phone,
-      }
-    })
-    .from(products)
-    .leftJoin(users, eq(products.farmerId, users.id));
+    if (filters?.category) conditions.push(eq(products.category, filters.category));
+    if (filters?.commune) conditions.push(eq(products.commune, filters.commune));
+    if (filters?.search) conditions.push(like(products.name, `%${filters.search}%`));
 
-  const result = conditions.length > 0 
-    ? await query.where(and(...conditions)).orderBy(desc(products.harvestDate))
-    : await query.orderBy(desc(products.harvestDate));
+    const query = db
+      .select({
+        product: products,
+        farmer: {
+          id: users.id,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          phone: users.phone,
+        }
+      })
+      .from(products)
+      .leftJoin(users, eq(products.farmerId, users.id));
 
-  // On reformate pour que le farmer soit à l'intérieur de l'objet produit
-  return result.map(row => ({
-    ...row.product,
-    farmer: row.farmer
-  }));
-}
+    const result = conditions.length > 0 
+      ? await query.where(and(...conditions)).orderBy(desc(products.createdAt))
+      : await query.orderBy(desc(products.createdAt));
+
+    return result.map(row => ({
+      ...row.product,
+      farmer: row.farmer
+    }));
+  }
 
   async createProduct(productData: InsertProduct) {
     const [product] = await db.insert(products).values(productData).returning();
@@ -151,15 +153,10 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(products).where(eq(products.farmerId, farmerId)).orderBy(desc(products.createdAt));
   }
 
-  // --- COMMANDES (Utilisation des Alias pour éviter le crash SQL) ---
+  // --- COMMANDES ---
   async getOrderWithDetails(id: number) {
     const result = await db
-      .select({
-        order: orders,
-        product: products,
-        buyer: buyers,
-        farmer: farmers,
-      })
+      .select({ order: orders, product: products, buyer: buyers, farmer: farmers })
       .from(orders)
       .leftJoin(products, eq(orders.productId, products.id))
       .leftJoin(buyers, eq(orders.buyerId, buyers.id))
@@ -231,20 +228,12 @@ export class DatabaseStorage implements IStorage {
     return contact;
   }
 
-  async updateContact(id: number, contactData: Partial<InsertContact>) {
-    const [contact] = await db.update(contacts).set(contactData).where(eq(contacts.id, id)).returning();
-    return contact;
-  }
-
   // --- STATISTIQUES ---
-  // Statistiques (server/storage.ts)
   async getStats() {
     try {
       const [farmerCount] = await db.select({ count: sql<number>`count(*)` }).from(users).where(eq(users.userType, "farmer"));
       const [productCount] = await db.select({ count: sql<number>`count(*)` }).from(products).where(eq(products.isApproved, true));
       const [orderCount] = await db.select({ count: sql<number>`count(*)` }).from(orders);
-      
-      // On récupère les communes distinctes
       const communesResult = await db.select({ name: products.commune }).from(products).groupBy(products.commune);
 
       return {
@@ -254,7 +243,6 @@ export class DatabaseStorage implements IStorage {
         totalCommunes: communesResult.length || 0,
       };
     } catch (error) {
-      console.error("Erreur Stats:", error);
       return { totalFarmers: 0, totalProducts: 0, totalOrders: 0, totalCommunes: 0 };
     }
   }

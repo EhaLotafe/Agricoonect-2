@@ -14,7 +14,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/auth-context";
 import { useIsOnline } from "@/hooks/use-online";
-import { CalendarIcon, Loader2, UploadCloud, WifiOff, CheckCircle2, Tag, MapPin, Image as ImageIcon, X,  PlusCircle  } from "lucide-react";
+import { CalendarIcon, Loader2, UploadCloud, WifiOff, CheckCircle2, Tag, MapPin, PlusCircle, X } from "lucide-react";
 import { z } from "zod";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -60,41 +60,36 @@ export default function ProductForm({ product, onSuccess }: { product?: Product;
   const selectedCategory = form.watch('category');
   const uploadedImages = form.watch('images') || [];
 
-  // 🖼️ GESTION DE L'UPLOAD D'IMAGES
- // client/src/components/product-form.tsx
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0 || !token) return;
 
-const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  const files = e.target.files;
-  if (!files || files.length === 0 || !token) return;
+    setIsUploading(true);
+    const formData = new FormData();
+    Array.from(files).forEach(file => formData.append("images", file));
 
-  setIsUploading(true);
-  const formData = new FormData();
-  Array.from(files).forEach(file => formData.append("images", file));
+    try {
+      const res = await fetch("/api/uploads", { 
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}` },
+        body: formData,
+      });
 
-  try {
-    // client/src/components/product-form.tsx
-    const res = await fetch("/api/uploads", { // ✅ VÉRIFIE BIEN LE "S" À UPLOADS
-      method: "POST",
-      headers: { "Authorization": `Bearer ${token}` },
-      body: formData,
-    });
-
-    const data = await res.json();
-    if (data.success) {
-      // ✅ Utilise la fonction de rappel pour être sûr de ne pas écraser les anciennes images
-      const newUrls = data.urls; 
-      form.setValue("images", newUrls, { shouldValidate: true, shouldDirty: true });
-      
-      toast({ title: "Image chargée", description: "La photo est prête pour la publication." });
+      const data = await res.json();
+      if (data.success) {
+        form.setValue("images", [...uploadedImages, ...data.urls]);
+        toast({ title: "Image chargée", description: "La photo a été ajoutée à l'annonce." });
+      }
+    } catch (err) {
+      toast({ title: "Erreur", description: "Échec de l'envoi de l'image.", variant: "destructive" });
+    } finally {
+      setIsUploading(false);
     }
-  } catch (err) {
-    toast({ title: "Erreur", description: "Échec de l'envoi de l'image.", variant: "destructive" });
-  } finally {
-    setIsUploading(false);
-  }
-};
+  };
+
   const mutation = useMutation({
     mutationFn: async (values: ProductFormData) => {
+      // 🛠️ NETTOYAGE DES DONNÉES (Argument : Intégrité du SI)
       const finalData = {
         ...values,
         farmerId: Number(user?.id),
@@ -119,7 +114,7 @@ const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: "Succès !", description: "Votre produit est maintenant en ligne." });
+      toast({ title: "Félicitations !", description: "Votre produit est enregistré et publié." });
       queryClient.invalidateQueries({ queryKey: ['/api/products'] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer/products", user?.id] });
       if (onSuccess) onSuccess();
@@ -135,7 +130,7 @@ const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
   });
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {!isOnline && (
         <Badge variant="destructive" className="w-full justify-center py-3 rounded-2xl animate-pulse gap-2 font-black border-none shadow-lg">
           <WifiOff size={18} /> MODE DÉCONNECTÉ ACTIVÉ
@@ -145,89 +140,102 @@ const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       <Form {...form}>
         <form onSubmit={form.handleSubmit(data => mutation.mutate(data))} className="space-y-8">
           
-          {/* IDENTITÉ PRODUIT */}
+          {/* SECTION : NOM ET CATÉGORIE */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <FormField control={form.control} name="name" render={({ field }) => (
               <FormItem>
-                <FormLabel className="font-black text-[10px] uppercase tracking-widest text-muted-foreground ml-1">Désignation</FormLabel>
-                <FormControl><Input id="p-name" placeholder="ex: Sac de braise" className="h-12 rounded-2xl bg-muted/40 border-none shadow-inner" {...field} /></FormControl>
+                <FormLabel htmlFor="p-name" className="font-black text-[10px] uppercase tracking-widest text-muted-foreground ml-1">Désignation du produit</FormLabel>
+                <FormControl><Input id="p-name" placeholder="ex: Sac de braise" className="h-12 rounded-2xl bg-muted/40 border-none shadow-inner focus:ring-primary" {...field} /></FormControl>
                 <FormMessage />
               </FormItem>
             )} />
 
             <FormField control={form.control} name="category" render={({ field }) => (
               <FormItem>
-                <FormLabel className="font-black text-[10px] uppercase tracking-widest text-muted-foreground ml-1">Catégorie</FormLabel>
+                <FormLabel htmlFor="p-cat" className="font-black text-[10px] uppercase tracking-widest text-muted-foreground ml-1">Catégorie</FormLabel>
                 <Select onValueChange={field.onChange} value={field.value}>
                   <FormControl>
-                    <SelectTrigger id="p-cat" className="h-12 rounded-2xl bg-muted/40 border-none shadow-inner">
+                    <SelectTrigger id="p-cat" className="h-12 rounded-2xl bg-muted/40 border-none shadow-inner transition-all hover:bg-muted/60">
                       <div className="flex items-center gap-2"><Tag size={14} className="text-primary" /><SelectValue placeholder="Choisir..." /></div>
                     </SelectTrigger>
                   </FormControl>
-                  <SelectContent className="rounded-2xl border-border bg-popover/95 backdrop-blur-md shadow-2xl">
+                  <SelectContent className="rounded-2xl border-none shadow-2xl bg-popover/95 backdrop-blur-md">
                     {categories.map(c => <SelectItem key={c} value={c} className="rounded-lg">{c}</SelectItem>)}
-                    <SelectItem value="Autre" className="font-black text-primary italic">+ AUTRE CATÉGORIE</SelectItem>
+                    <SelectItem value="Autre" className="font-black text-primary italic rounded-lg">+ AUTRE CATÉGORIE</SelectItem>
                   </SelectContent>
                 </Select>
                 {selectedCategory === "Autre" && (
                   <FormField control={form.control} name="customCategory" render={({ field }) => (
-                    <Input {...field} placeholder="Précisez la catégorie..." className="mt-2 h-11 bg-primary/5 border-primary/20 rounded-xl" />
+                    <Input {...field} id="p-custom-cat" placeholder="Précisez la catégorie..." className="mt-2 h-11 bg-primary/5 border-primary/20 rounded-xl animate-in slide-in-from-top-2" />
                   )} />
                 )}
               </FormItem>
             )} />
           </div>
 
-          {/* PRIX ET STOCK */}
+          {/* SECTION : PRIX ET STOCK (GLASS DESIGN) */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-6 rounded-[2rem] bg-muted/30 dark:bg-slate-900/50 backdrop-blur-sm border border-border/50 shadow-2xl">
             <FormField control={form.control} name="price" render={({ field }) => (
-              <FormItem><FormLabel className="text-[10px] font-black uppercase opacity-50 ml-1">Prix (CDF)</FormLabel>
-              <Input type="number" {...field} value={field.value || ""} onChange={e => field.onChange(e.target.value)} className="h-11 bg-background/50 rounded-xl font-bold" /></FormItem>
+              <FormItem><FormLabel htmlFor="p-price" className="text-[10px] font-black uppercase opacity-50 ml-1">Prix (CDF)</FormLabel>
+              <Input id="p-price" type="number" {...field} value={field.value || ""} onChange={e => field.onChange(e.target.value)} className="h-11 bg-background/50 rounded-xl font-bold border-none" /></FormItem>
             )} />
             <FormField control={form.control} name="unit" render={({ field }) => (
-              <FormItem><FormLabel className="text-[10px] font-black uppercase opacity-50 ml-1">Unité</FormLabel>
+              <FormItem><FormLabel htmlFor="p-unit" className="text-[10px] font-black uppercase opacity-50 ml-1">Unité</FormLabel>
               <Select onValueChange={field.onChange} value={field.value}>
-                <SelectTrigger className="h-11 bg-background/50 rounded-xl font-bold"><SelectValue /></SelectTrigger>
-                <SelectContent className="rounded-xl bg-popover/95 backdrop-blur-md">{['kg', 'sac', 'seau', 'botte', 'tas', 'pièce'].map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                <SelectTrigger id="p-unit" className="h-11 bg-background/50 rounded-xl font-bold border-none"><SelectValue /></SelectTrigger>
+                <SelectContent className="rounded-xl border-none bg-popover/95 backdrop-blur-md">{['kg', 'sac', 'seau', 'botte', 'tas', 'pièce'].map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
               </Select></FormItem>
             )} />
             <FormField control={form.control} name="quantity" render={({ field }) => (
-              <FormItem><FormLabel className="text-[10px] font-black uppercase opacity-50 ml-1">Quantité</FormLabel>
-              <Input type="number" {...field} value={field.value || 0} onChange={e => field.onChange(Number(e.target.value))} className="h-11 bg-background/50 rounded-xl font-bold" /></FormItem>
+              <FormItem><FormLabel htmlFor="p-qty" className="text-[10px] font-black uppercase opacity-50 ml-1">Quantité</FormLabel>
+              <Input id="p-qty" type="number" {...field} value={field.value || 0} onChange={e => field.onChange(Number(e.target.value))} className="h-11 bg-background/50 rounded-xl font-bold border-none" /></FormItem>
             )} />
           </div>
 
           {/* PHOTOS DU PRODUIT */}
           <div className="space-y-4">
-            <FormLabel className="font-black text-[10px] uppercase tracking-widest text-muted-foreground ml-1">Photos de la récolte</FormLabel>
+            <FormLabel className="font-black text-[10px] uppercase tracking-widest text-muted-foreground ml-1">Photos de la récolte (Preuve de qualité)</FormLabel>
             <div className="grid grid-cols-3 sm:grid-cols-5 gap-4">
               {uploadedImages.map((url, index) => (
-                <div key={index} className="relative aspect-square rounded-xl overflow-hidden border bg-muted group">
+                <div key={index} className="relative aspect-square rounded-2xl overflow-hidden border bg-muted group shadow-md">
                   <img src={url} className="w-full h-full object-cover" alt="Aperçu" />
-                  <button 
-                    type="button" 
-                    onClick={() => form.setValue("images", uploadedImages.filter((_, i) => i !== index))}
-                    className="absolute top-1 right-1 bg-destructive text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <X size={12} />
-                  </button>
+                  <button type="button" onClick={() => form.setValue("images", uploadedImages.filter((_, i) => i !== index))} className="absolute top-1 right-1 bg-destructive text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"><X size={12} /></button>
                 </div>
               ))}
-              <label className="flex flex-col items-center justify-center aspect-square rounded-xl border-2 border-dashed border-primary/30 hover:border-primary bg-primary/5 cursor-pointer transition-all">
+              <label className="flex flex-col items-center justify-center aspect-square rounded-2xl border-2 border-dashed border-primary/30 hover:border-primary bg-primary/5 cursor-pointer transition-all hover:bg-primary/10">
                 {isUploading ? <Loader2 className="animate-spin text-primary" /> : <PlusCircle className="text-primary" size={24} />}
-                <span className="text-[9px] font-bold mt-1 text-primary">AJOUTER</span>
-                <input type="file" multiple accept="image/*" className="hidden" onChange={handleImageUpload} disabled={isUploading} />
+                <span className="text-[9px] font-black mt-1 text-primary tracking-widest uppercase">AJOUTER</span>
+                <input type="file" multiple accept="image/*" className="hidden" onChange={handleImageUpload} disabled={isUploading} id="p-images" />
               </label>
             </div>
           </div>
 
+          {/* DESCRIPTION */}
+          <FormField control={form.control} name="description" render={({ field }) => (
+            <FormItem>
+              <FormLabel htmlFor="p-desc" className="font-black text-[10px] uppercase tracking-widest text-muted-foreground ml-1">
+                Détails sur la culture (Argument Qualité)
+              </FormLabel>
+              <FormControl>
+                <Textarea 
+                  id="p-desc" 
+                  placeholder="ex: Récolté à la main sans engrais chimiques..." 
+                  className="h-28 rounded-2xl bg-muted/40 border-none shadow-inner p-4" 
+                  {...field} 
+                  value={field.value ?? ""} // ✅ FIX: Remplace null par une chaîne vide
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )} />
+
           {/* TRAÇABILITÉ : DATE DE RÉCOLTE */}
           <FormField control={form.control} name="harvestDate" render={({ field }) => (
-            <FormItem>
-              <FormLabel className="flex items-center gap-2 text-brand-orange font-black text-xs uppercase tracking-widest ml-1">
-                <CalendarIcon size={16} /> Date de récolte (Traçabilité)
+            <FormItem className="space-y-1">
+              <FormLabel htmlFor="p-date" className="flex items-center gap-2 text-brand-orange font-black text-[10px] uppercase tracking-widest ml-1">
+                <CalendarIcon size={16} /> Date de récolte (Indicateur de fraîcheur)
               </FormLabel>
-              <FormControl><Input type="date" {...field} className="h-12 rounded-2xl bg-muted/40 border-none shadow-inner" /></FormControl>
+              <FormControl><Input id="p-date" type="date" {...field} className="h-12 rounded-2xl bg-muted/40 border-none shadow-inner" /></FormControl>
               <FormMessage />
             </FormItem>
           )} />
@@ -236,21 +244,19 @@ const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <FormField control={form.control} name="commune" render={({ field }) => (
               <FormItem>
-                <FormLabel className="font-black text-xs uppercase tracking-widest ml-1">Commune rurale</FormLabel>
+                <FormLabel htmlFor="p-com" className="font-black text-[10px] uppercase tracking-widest text-muted-foreground ml-1">Commune rurale</FormLabel>
                 <Select onValueChange={field.onChange} value={field.value}>
                   <FormControl>
-                    <SelectTrigger className="h-12 rounded-2xl bg-muted/40 border-none shadow-inner">
-                      <div className="flex items-center gap-2"><MapPin size={14} className="text-primary" /><SelectValue placeholder="Zone..." /></div>
-                    </SelectTrigger>
+                    <SelectTrigger id="p-com" className="h-12 rounded-2xl bg-muted/40 border-none shadow-inner"><div className="flex items-center gap-2"><MapPin size={14} className="text-primary" /><SelectValue placeholder="Zone..." /></div></SelectTrigger>
                   </FormControl>
-                  <SelectContent className="rounded-2xl border-border bg-popover/95 backdrop-blur-md shadow-2xl">
+                  <SelectContent className="rounded-2xl border-none shadow-2xl bg-popover/95 backdrop-blur-md">
                     {communes.map(c => <SelectItem key={c} value={c} className="rounded-lg">{c}</SelectItem>)}
                     <SelectItem value="Autre" className="font-black text-primary italic rounded-lg">+ AUTRE ZONE</SelectItem>
                   </SelectContent>
                 </Select>
                 {selectedCommune === "Autre" && (
                   <FormField control={form.control} name="customCommune" render={({ field }) => (
-                    <Input {...field} placeholder="Nom de votre commune..." className="mt-2 h-11 bg-primary/5 border-primary/20 rounded-xl animate-in slide-in-from-top-2" />
+                    <Input {...field} id="p-custom-com" placeholder="Nom de votre village..." className="mt-2 h-11 bg-primary/5 border-primary/20 rounded-xl animate-in slide-in-from-top-2" />
                   )} />
                 )}
               </FormItem>
@@ -258,8 +264,8 @@ const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
             
             <FormField control={form.control} name="location" render={({ field }) => (
               <FormItem>
-                <FormLabel className="font-black text-xs uppercase tracking-widest ml-1">Détails (Village / Ferme)</FormLabel>
-                <FormControl><Input placeholder="ex: Village Futuka, Ferme X" className="h-12 rounded-2xl bg-muted/40 border-none shadow-inner" {...field} /></FormControl>
+                <FormLabel htmlFor="p-loc" className="font-black text-[10px] uppercase tracking-widest text-muted-foreground ml-1">Localisation précise</FormLabel>
+                <FormControl><Input id="p-loc" placeholder="ex: Ferme Futuka" className="h-12 rounded-2xl bg-muted/40 border-none shadow-inner" {...field} /></FormControl>
               </FormItem>
             )} />
           </div>
@@ -268,7 +274,7 @@ const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
           <Button 
             type="submit" 
             className={cn(
-              "w-full h-16 font-black text-lg shadow-2xl transition-all active:scale-95 rounded-[1.5rem] uppercase tracking-widest",
+              "w-full h-16 font-black text-lg shadow-2xl transition-all active:scale-[0.97] rounded-[1.5rem] uppercase tracking-widest",
               isOnline ? "bg-primary text-white" : "bg-brand-orange text-white"
             )}
             disabled={mutation.isPending || isUploading}

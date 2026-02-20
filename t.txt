@@ -119,3 +119,6 @@ On commence par quel fichier ? Le Header ou le Register ? (Envoie-moi le code de
 
 git commit -m "Version finale Agri-Connect : Architecture 3-tiers, RBAC et Offline-First"
 git push -u origin main
+
+ce que j'ai fais c'est deja bon ? (on va mette a jour le github, preparer l'hebergement ) et aux captures a mettre sur le travail
+apres on va parler des modif cotes travail du directeurs (et autres choses = presentation et diapo)

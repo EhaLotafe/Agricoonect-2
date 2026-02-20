@@ -168,7 +168,7 @@ export default function Header() {
              <div className="absolute top-4 left-4 text-left p-4">
                 <SheetHeader>
                   <SheetTitle className="text-white font-black tracking-tight uppercase text-lg">Mon Compte</SheetTitle>
-                  <SheetDescription className="text-white/70 text-[10px] font-bold uppercase tracking-widest italic">ESI UNILU • Lubumbashi</SheetDescription>
+                  <SheetDescription className="text-white/70 text-[10px] font-bold uppercase tracking-widest italic">Mettre a jour vos informations</SheetDescription>
                 </SheetHeader>
              </div>
           </div>

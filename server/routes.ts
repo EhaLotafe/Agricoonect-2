@@ -1,3 +1,4 @@
+// server/routes.ts
 import express, { Request, Response, NextFunction } from "express";
 import { createServer, Server } from "http";
 import bcrypt from "bcrypt";
@@ -92,10 +93,6 @@ app.post("/api/register", async (req, res, next) => {
       res.json({ token, user: userData });
     } catch (error) { next(error); }
   });
-
-  // --- PRODUITS ---
-  // server/routes.ts
-
   // --- PRODUITS ---
   app.get("/api/products", async (req, res, next) => {
     try {
@@ -109,8 +106,6 @@ app.post("/api/register", async (req, res, next) => {
       res.json(products);
     } catch (error) { next(error); }
   });
-
-  // server/routes.ts
 
 app.post("/api/products", verifyToken, checkRole(['farmer', 'admin']), async (req, res, next) => {
     try {
@@ -129,6 +124,20 @@ app.post("/api/products", verifyToken, checkRole(['farmer', 'admin']), async (re
       console.error("❌ Erreur de publication:", error);
       next(error); 
     }
+});
+app.get("/api/products/:id", async (req, res, next) => {
+  try {
+    const productId = Number(req.params.id);
+    const product = await storage.getProductWithFarmer(productId);
+    
+    if (!product) {
+      return res.status(404).json({ message: "Produit non trouvé en base de données" });
+    }
+    
+    res.json(product);
+  } catch (error) {
+    next(error);
+  }
 });
 
   // 🔄 Route de Synchronisation (Argument Mémoire)
@@ -224,26 +233,38 @@ app.post("/api/products", verifyToken, checkRole(['farmer', 'admin']), async (re
   });
 
   // --- ADMIN ---
+   // --- 👑 ADMINISTRATION (LES ROUTES DONT TU AS BESOIN) ---
+
   app.get("/api/admin/users", verifyToken, checkRole(['admin']), async (_req, res, next) => {
     try { res.json(await storage.getAllUsers()); } catch (error) { next(error); }
+  });
+
+  app.put("/api/admin/users/:id", verifyToken, checkRole(['admin']), async (req, res, next) => {
+    try { res.json(await storage.updateUser(Number(req.params.id), req.body)); } catch (error) { next(error); }
+  });
+
+  app.get("/api/admin/products", verifyToken, checkRole(['admin']), async (_req, res, next) => {
+    try {
+      // L'admin voit tout le monde (approuvés ou non) pour faire son travail
+      res.json(await storage.getAllProducts({ isApproved: undefined })); 
+    } catch (error) { next(error); }
   });
 
   app.patch("/api/admin/products/:id/approve", verifyToken, checkRole(['admin']), async (req, res, next) => {
     try { res.json(await storage.approveProduct(Number(req.params.id))); } catch (error) { next(error); }
   });
 
+  app.delete("/api/admin/products/:id", verifyToken, checkRole(['admin']), async (req, res, next) => {
+    try { 
+      await storage.deleteProduct(Number(req.params.id));
+      res.json({ message: "Produit supprimé" });
+    } catch (error) { next(error); }
+  });
+
   app.get("/api/stats", async (_req, res, next) => {
     try { res.json(await storage.getStats()); } catch (error) { next(error); }
   });
-// --- ADMINISTRATION : GESTION UTILISATEURS ---
-app.put("/api/admin/users/:id", verifyToken, checkRole(['admin']), async (req, res, next) => {
-  try {
-    const userId = Number(req.params.id);
-    const updateData = req.body; // Zod validation can be added here
-    const updatedUser = await storage.updateUser(userId, updateData);
-    res.json(updatedUser);
-  } catch (error) { next(error); }
-});
+
   // --- DONNÉES STATIQUES ---
 app.get("/api/communes", (_req, res) => {
   res.json(["Annexe", "Lubumbashi", "Kenya", "Katuba", "Kamalondo", "Kampemba", "Ruashi"]);

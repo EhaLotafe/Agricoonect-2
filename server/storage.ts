@@ -200,12 +200,19 @@ export class DatabaseStorage implements IStorage {
 
   // --- AVIS & CONTACTS ---
   async getReviewsByProduct(productId: number) {
-    const result = await db
-      .select({ review: reviews, buyer: users })
-      .from(reviews)
-      .leftJoin(users, eq(reviews.buyerId, users.id))
-      .where(eq(reviews.productId, productId));
-    return result.map(r => ({ ...r.review, buyer: r.buyer }));
+    try {
+      const result = await db
+        .select({ review: reviews, buyer: users })
+        .from(reviews)
+        .leftJoin(users, eq(reviews.buyerId, users.id))
+        .where(eq(reviews.productId, productId));
+
+      if (!result) return [];
+      return result.map(r => ({ ...r.review, buyer: r.buyer || { firstName: "Utilisateur", lastName: "Anonyme" } }));
+    } catch (error) {
+      console.error("Erreur Reviews:", error);
+      return [];
+    }
   }
 
   async createReview(reviewData: InsertReview) {

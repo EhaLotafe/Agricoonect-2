@@ -165,20 +165,36 @@ app.get("/api/products/:id", async (req, res, next) => {
     } catch (error) { next(error); }
   });
 
-  // --- COMMANDES ---
+  // --- COMMANDES --
   app.post("/api/orders", verifyToken, async (req, res, next) => {
-    try {
-      const orderData = insertOrderSchema.parse(req.body);
-      const product = await storage.getProduct(orderData.productId);
-      if (!product || product.availableQuantity < orderData.quantity) {
-        return res.status(400).json({ message: "Stock insuffisant" });
-      }
-      const order = await storage.createOrder({ ...orderData, buyerId: (req as any).user.id });
-      await storage.updateProduct(product.id, { availableQuantity: product.availableQuantity - orderData.quantity });
-      res.status(201).json(order);
-    } catch (error) { next(error); }
-  });
+      try {
+        // 🛡️ On valide en ignorant le buyerId (car on l'ajoute via le Token)
+        const orderData = insertOrderSchema.omit({ buyerId: true }).parse(req.body);
+        
+        // Vérification du stock
+        const product = await storage.getProduct(orderData.productId);
+        if (!product || product.availableQuantity < orderData.quantity) {
+          return res.status(400).json({ message: "Désolé, le stock est insuffisant." });
+        }
 
+        // Création de la commande avec l'ID de l'acheteur extrait du Token
+        const order = await storage.createOrder({ 
+          ...orderData, 
+          buyerId: (req as any).user.id,
+          status: "pending" // Statut initial par défaut
+        });
+
+        // Mise à jour automatique du stock disponible
+        await storage.updateProduct(product.id, { 
+          availableQuantity: product.availableQuantity - orderData.quantity 
+        });
+
+        res.status(201).json(order);
+      } catch (error) { 
+        console.error("❌ Erreur Commande:", error);
+        next(error); 
+      }
+    });
   app.get("/api/buyer/:buyerId/orders", verifyToken, async (req, res, next) => {
     try {
       const orders = await storage.getOrdersByBuyer(Number(req.params.buyerId));

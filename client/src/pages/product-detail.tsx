@@ -57,22 +57,32 @@ export default function ProductDetail() {
   });
 
   // --- MUTATIONS ---
+
   const orderMutation = useMutation({
     mutationFn: async (data: z.infer<typeof orderSchema>) => {
-      return await apiRequest('POST', '/api/orders', {
-        productId: Number(id),
-        farmerId: product?.farmerId,
-        quantity: data.quantity,
-        totalPrice: (parseFloat(product!.price) * data.quantity).toString(),
+      if (!product) throw new Error("Produit non chargé");
+
+      const payload = {
+        productId: Number(product.id), // ✅ Forcer en nombre
+        farmerId: Number(product.farmerId), // ✅ Forcer en nombre
+        quantity: Number(data.quantity), // ✅ Forcer en nombre
+        totalPrice: (parseFloat(product.price) * data.quantity).toFixed(2), // ✅ String pour le type decimal
         deliveryAddress: data.deliveryAddress,
-      });
+      };
+
+      console.log("🚀 Envoi de la commande :", payload);
+
+      const res = await apiRequest('POST', '/api/orders', payload);
+      return res.json();
     },
     onSuccess: () => {
-      toast({ title: "Commande passée", description: "Le producteur a été notifié de votre achat." });
+      toast({ title: "Commande passée !", description: "Le producteur va traiter votre demande." });
       setShowOrderDialog(false);
       queryClient.invalidateQueries({ queryKey: [`/api/products/${id}`] });
     },
-    onError: (e: any) => toast({ title: "Erreur", description: e.message, variant: "destructive" })
+    onError: (error: any) => {
+      toast({ title: "Erreur 400", description: error.message, variant: "destructive" });
+    }
   });
 
   const contactMutation = useMutation({
@@ -233,49 +243,114 @@ export default function ProductDetail() {
 
 // --- SOUS-COMPOSANTS DES MODALES (DIALOGS) ---
 
-function OrderDialog({ product, mutation }: any) {
+function OrderDialog({ product, mutation }: { product: ProductWithFarmer, mutation: any }) {
   const form = useForm({
     resolver: zodResolver(orderSchema),
     defaultValues: { quantity: 1, deliveryAddress: '' }
   });
 
+  // 🧮 Calcul du total dynamique pour l'expérience utilisateur
+  const currentQty = form.watch('quantity') || 0;
+  const totalPrice = parseFloat(product.price) * currentQty;
+
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button className="h-16 bg-primary text-white font-black text-lg gap-2 shadow-xl rounded-2xl hover:scale-105 transition-transform" disabled={product.availableQuantity <= 0}>
+        <Button className="h-16 bg-primary text-white font-black text-lg gap-3 shadow-xl shadow-primary/20 rounded-2xl hover:scale-[1.02] transition-all active:scale-95">
           <ShoppingCart size={22} /> COMMANDER
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md rounded-[2rem] bg-card">
-        <DialogHeader>
-          <DialogTitle className="text-2xl font-black tracking-tight text-foreground">Finaliser l'achat</DialogTitle>
-          <DialogDescription className="font-medium text-muted-foreground italic">Achat direct auprès de {product.farmer?.firstName}.</DialogDescription>
-        </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(data => mutation.mutate(data))} className="space-y-6 pt-4">
-            <FormField control={form.control} name="quantity" render={({ field }) => (
-              <FormItem>
-                <FormLabel className="font-bold text-foreground">Quantité souhaitée ({product.unit})</FormLabel>
-                <FormControl><Input type="number" min={1} max={product.availableQuantity} className="h-12 rounded-xl bg-muted/20 border-none" {...field} value={field.value || ""} onChange={e => field.onChange(Number(e.target.value))} /></FormControl>
-                <FormMessage />
-              </FormItem>
-            )} />
-            <FormField control={form.control} name="deliveryAddress" render={({ field }) => (
-              <FormItem>
-                <FormLabel className="font-bold text-foreground">Lieu de livraison à Lubumbashi</FormLabel>
-                <FormControl><Textarea placeholder="Quartier, Avenue, N°, Commune..." className="rounded-xl bg-muted/20 border-none min-h-[100px]" {...field} /></FormControl>
-                <FormMessage />
-              </FormItem>
-            )} />
-            <div className="p-5 bg-primary/5 rounded-2xl border-2 border-primary/10 flex justify-between items-center">
-              <span className="font-bold text-sm text-muted-foreground uppercase tracking-widest">Total :</span>
-              <span className="text-2xl font-black text-brand-orange">{formatCurrency(parseFloat(product.price) * (form.watch('quantity') || 1))}</span>
+      
+      <DialogContent className="sm:max-w-[480px] rounded-[2.5rem] bg-popover/95 backdrop-blur-xl border-border shadow-2xl p-0 overflow-hidden animate-in zoom-in-95 duration-300">
+        {/* Header stylisé avec fond de couleur subtil */}
+        <div className="bg-primary/10 p-8 border-b border-border/50">
+          <DialogHeader>
+            <div className="flex items-center gap-4 mb-2">
+               <div className="p-3 bg-primary rounded-2xl text-white shadow-lg"><ShoppingCart size={24}/></div>
+               <div>
+                  <DialogTitle className="text-2xl font-black tracking-tighter text-foreground uppercase">Passer commande</DialogTitle>
+                  <DialogDescription className="font-bold text-primary text-[10px] uppercase tracking-widest">Achat direct • Circuit Court</DialogDescription>
+               </div>
             </div>
-            <Button type="submit" className="w-full h-14 bg-primary text-white font-black text-lg rounded-xl shadow-lg" disabled={mutation.isPending}>
-              {mutation.isPending ? <Loader2 className="animate-spin" /> : "CONFIRMER L'ACHAT"}
-            </Button>
-          </form>
-        </Form>
+          </DialogHeader>
+        </div>
+
+        <div className="p-8 space-y-6">
+          {/* Rappel du produit sélectionné */}
+          <div className="flex items-center justify-between p-4 rounded-2xl bg-muted/30 border border-border/50">
+            <span className="text-sm font-bold text-foreground">{product.name}</span>
+            <Badge variant="outline" className="font-black text-brand-orange border-brand-orange/30">
+              {formatCurrency(product.price)} / {product.unit}
+            </Badge>
+          </div>
+
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(data => mutation.mutate(data))} className="space-y-6">
+              {/* Quantité avec protection NaN */}
+              <FormField control={form.control} name="quantity" render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="font-black text-[10px] uppercase tracking-widest text-muted-foreground ml-1">Quantité souhaitée</FormLabel>
+                  <FormControl>
+                    <Input 
+                      type="number" 
+                      min={1} 
+                      max={product.availableQuantity} 
+                      className="h-12 rounded-xl bg-background border-border focus:ring-primary font-bold text-lg" 
+                      {...field} 
+                      value={field.value ?? ""} 
+                      onChange={e => field.onChange(Number(e.target.value))} 
+                    />
+                  </FormControl>
+                  <p className="text-[10px] text-muted-foreground italic mt-1 ml-1">Maximum disponible : {product.availableQuantity} {product.unit}</p>
+                  <FormMessage />
+                </FormItem>
+              )} />
+
+              {/* Adresse de livraison */}
+              <FormField control={form.control} name="deliveryAddress" render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="font-black text-[10px] uppercase tracking-widest text-muted-foreground ml-1">Lieu de livraison (Lubumbashi)</FormLabel>
+                  <FormControl>
+                    <Textarea 
+                      placeholder="ex: Quartier Golf, Avenue des Plaines, N°12..." 
+                      className="rounded-xl bg-background border-border focus:ring-primary min-h-[100px] p-4 text-sm" 
+                      {...field} 
+                      value={field.value ?? ""}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+
+              {/* Résumé du prix avec design "Badge" */}
+              <div className="p-5 bg-primary/5 rounded-[1.5rem] border-2 border-primary/10 flex justify-between items-center shadow-inner">
+                <div className="space-y-0.5">
+                  <span className="block text-[10px] font-black text-primary uppercase tracking-widest">Total Estimé</span>
+                  <span className="text-xs text-muted-foreground italic">Hors frais de transport</span>
+                </div>
+                <span className="text-3xl font-black text-brand-orange tracking-tighter">
+                  {formatCurrency(totalPrice)}
+                </span>
+              </div>
+
+              {/* Bouton de validation dynamique */}
+              <Button 
+                type="submit" 
+                className="w-full h-14 bg-primary hover:bg-primary/90 text-white font-black text-lg rounded-2xl shadow-xl shadow-primary/20 transition-all active:scale-95" 
+                disabled={mutation.isPending}
+              >
+                {mutation.isPending ? (
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="animate-spin" size={20} />
+                    <span>TRAITEMENT...</span>
+                  </div>
+                ) : (
+                  "CONFIRMER L'ACHAT"
+                )}
+              </Button>
+            </form>
+          </Form>
+        </div>
       </DialogContent>
     </Dialog>
   );

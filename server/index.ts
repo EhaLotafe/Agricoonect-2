@@ -6,8 +6,14 @@ import { setupVite, serveStatic, log } from "./vite.js";
 import uploadsRouter from "./uploads.js";
 import path from "path";
 import fs from "fs";
+import cors from "cors";
 
 const app = express();
+// ✅ Autorise ton futur site Vercel à appeler ton API
+app.use(cors({
+  origin: "*", // Pour la démo, on autorise tout. On pourra restreindre plus tard.
+  credentials: true
+}));
 
 // 1. Configuration des parsers (Toujours en premier)
 app.use(express.json());

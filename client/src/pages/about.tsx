@@ -53,7 +53,7 @@ export default function About() {
             <p className="text-slate-400">
               Ce projet a été réalisé par <span className="text-white font-bold">LOTAFE EFOSO Manassé</span> et 
               <span className="text-white font-bold"> KIKOMBE MUYUMBA Moïse</span> dans le cadre de l'obtention du diplôme de bachelier 
-              en Sciences Informatiques à l'École Supérieure d'Informatique (**ESI - UNILU**).
+              en Sciences Informatiques à la faculte des Sciences et Technologies (**UNILU**).
             </p>
             <div className="flex flex-wrap gap-4 pt-4 border-t border-slate-800">
               <TechBadge icon={<Database size={12}/>} label="PostgreSQL / Supabase" />

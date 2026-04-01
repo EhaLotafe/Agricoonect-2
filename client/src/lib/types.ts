@@ -1,8 +1,8 @@
 // client/src/lib/types.ts
 
 /**
- * Interface de l'utilisateur connecté (UserState)
- * Reflète les informations stockées dans le Token JWT
+ * 👤 USERSTATE (Sécurité & RBAC)
+ * Définit les privilèges d'accès selon les rôles identifiés dans le Scrum.
  */
 export interface UserState {
   id: number;
@@ -18,8 +18,8 @@ export interface UserState {
 }
 
 /**
- * Interface Produit étendue (ProductWithFarmer)
- * Inclut les badges spécifiques à Lubumbashi et la fraîcheur
+ * 🌿 PRODUCTWITHFARMER (Valorisation par la donnée)
+ * Interface centrale pour la méthode analytique : lie le produit à son origine rurale.
  */
 export interface ProductWithFarmer {
   id: number;
@@ -27,34 +27,41 @@ export interface ProductWithFarmer {
   name: string;
   description?: string;
   category: string;
-  price: string; // Décimal converti en string par le driver PG
-  unit: string; // kg, sac, seau
+  price: string; 
+  unit: string; 
   quantity: number;
   availableQuantity: number;
-  
-  // --- Spécificités Lubumbashi / Mémoire ---
+  // --- Indicateurs de proximité (Axe Géographique du Mémoire) ---
   commune: string; // Annexe, Ruashi, etc.
-  location: string; // Précision (Village/Ferme)
-  harvestDate?: string; // ISO date pour l'indicateur de fraîcheur
+  location: string; // Précision Village/Ferme
+  harvestDate?: string; // Base de calcul de l'algorithme de fraîcheur
   province: string;
   
   images?: string[];
   isActive: boolean;
-  isApproved: boolean; // Statut de modération admin
+  isApproved: boolean; 
   createdAt: string;
   updatedAt: string;
   
-  // Données de l'agriculteur jointes
   farmer: {
     id: number;
     firstName: string;
     lastName: string;
     phone?: string;
   };
-  
-  // Métadonnées d'évaluation
   averageRating?: number;
   reviewCount?: number;
+}
+
+/**
+ * 📊 MARKETTRENDS (Méthode Analytique & Quantitative)
+ * Interface représentant les résultats du moteur de traitement des sondages.
+ */
+export interface MarketTrend {
+  product: string;
+  demandCount: number; // Fréquence de recherche
+  totalQuantityRequested: number; // Volume total souhaité par le marché
+  averageTargetPrice?: number; // "Juste prix" calculé par le système
 }
 
 /**

@@ -4,12 +4,13 @@ import { useEffect, useState } from "react";
 export type Theme = "light" | "dark" | "system";
 
 /**
- * Hook de gestion du thème Agri-Connect
- * Justification TFC : Optimisation de l'expérience utilisateur et 
- * économie d'énergie pour les terminaux mobiles en zone rurale.
+ * 🌓 USETHEME (Optimisation de l'Expérience Utilisateur)
+ * Justification TFC : Adaptation de l'interface aux conditions de luminosité
+ * extrêmes du Haut-Katanga (plein soleil vs zones à faible électrification).
+ * Contribue à la réduction de la charge cognitive lors de la consultation des sondages.
  */
 export function useTheme() {
-  // Initialisation sécurisée avec localStorage
+  // Initialisation persistante (Méthode de développement contrôlé)
   const [theme, setTheme] = useState<Theme>(() => {
     return (localStorage.getItem("agri_theme") as Theme) || "system";
   });
@@ -18,14 +19,16 @@ export function useTheme() {
     const root = window.document.documentElement;
     
     const applyTheme = () => {
-      // Détermination du thème à appliquer
       let effectiveTheme = theme;
+      
+      // Détection automatique des préférences du Système d'Exploitation
       if (theme === "system") {
         effectiveTheme = window.matchMedia("(prefers-color-scheme: dark)").matches 
           ? "dark" 
           : "light";
       }
 
+      // Manipulation directe du DOM pour une performance optimale (Shadcn/Tailwind)
       root.classList.remove("light", "dark");
       root.classList.add(effectiveTheme);
     };
@@ -33,7 +36,7 @@ export function useTheme() {
     applyTheme();
     localStorage.setItem("agri_theme", theme);
 
-    // Écouteur pour le changement dynamique du thème système
+    // Écouteur dynamique : Réactivité du SI aux changements de l'OS
     if (theme === "system") {
       const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
       const handleChange = () => applyTheme();
@@ -42,6 +45,7 @@ export function useTheme() {
     }
   }, [theme]);
 
+  // Fonction utilitaire pour le basculement rapide (Sprint UX)
   const toggleTheme = () => {
     setTheme((prev) => (prev === "light" ? "dark" : "light"));
   };

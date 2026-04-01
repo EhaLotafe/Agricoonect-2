@@ -1,8 +1,10 @@
+// client/src/lib/queryClient.ts
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 /**
- * ✅ Fonction de vérification des erreurs
- * Améliorée pour extraire le message JSON renvoyé par Express
+ * 🛠️ GESTIONNAIRE D'EXCEPTIONS (Méthode Analytique)
+ * Garantit l'intégrité des données en interceptant les erreurs de l'API.
+ * Crucial pour ne pas fausser les calculs statistiques du marketing.
  */
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -11,15 +13,15 @@ async function throwIfResNotOk(res: Response) {
       const data = await res.json();
       errorMessage = data.message || errorMessage;
     } catch (e) {
-      // Si la réponse n'est pas du JSON
+      // Échec du parsing JSON : Erreur serveur brute
     }
     throw new Error(`${res.status}: ${errorMessage}`);
   }
 }
 
 /**
- * ✅ Fonction d'injection du Token JWT
- * Indispensable pour que le Backend reconnaisse l'utilisateur
+ * 🛡️ INJECTEUR DE SÉCURITÉ (RBAC)
+ * Automatise l'envoi du Token JWT pour identifier le rôle (Agriculteur/Acheteur).
  */
 function getAuthHeaders(): Record<string, string> {
   const token = localStorage.getItem("agri_token");
@@ -33,7 +35,8 @@ function getAuthHeaders(): Record<string, string> {
 }
 
 /**
- * ✅ apiRequest : Pour les requêtes POST, PUT, PATCH, DELETE
+ * ⚡ GESTIONNAIRE DE MUTATIONS (POST/PUT/PATCH/DELETE)
+ * Utilisé pour soumettre les sondages obligatoires.
  */
 export async function apiRequest(
   method: string,
@@ -42,7 +45,7 @@ export async function apiRequest(
 ): Promise<Response> {
   const res = await fetch(url, {
     method,
-    headers: getAuthHeaders(), // Utilisation du JWT
+    headers: getAuthHeaders(),
     body: data ? JSON.stringify(data) : undefined,
   });
 
@@ -51,20 +54,22 @@ export async function apiRequest(
 }
 
 /**
- * ✅ defaultQueryFn : Pour les requêtes GET (React Query)
+ * 📊 RÉCUPÉRATEUR DE DONNÉES (GET)
+ * Point d'entrée pour collecter les statistiques de marché en temps réel.
  */
 export const defaultQueryFn: QueryFunction = async ({ queryKey }) => {
   const url = typeof queryKey[0] === "string" ? queryKey[0] : "/";
 
   const res = await fetch(url, {
     method: "GET",
-    headers: getAuthHeaders(), // On envoie le token si présent
+    headers: getAuthHeaders(),
   });
 
-  // Si le token est expiré (401), on pourrait rediriger vers /login
+  // Gestion de l'expiration de session pour la sécurité du SI
   if (res.status === 401) {
     localStorage.removeItem("agri_token");
-    // window.location.href = "/login"; // Optionnel : redirection forcée
+    localStorage.removeItem("agri_user");
+    // Optionnel: window.location.href = "/login";
   }
 
   await throwIfResNotOk(res);
@@ -72,15 +77,18 @@ export const defaultQueryFn: QueryFunction = async ({ queryKey }) => {
 };
 
 /**
- * ✅ Initialisation du QueryClient
+ * 🚀 CONFIGURATION DU QUERYCLIENT (Optimisation Rurale)
+ * Paramétrage adapté aux contraintes de connectivité de Lubumbashi.
  */
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       queryFn: defaultQueryFn,
-      staleTime: 5 * 60 * 1000, // Les données sont "fraîches" pendant 5 min
-      refetchOnWindowFocus: false,
-      retry: false,
+      // Les données sont gardées 5 min en cache pour limiter les requêtes réseaux inutiles
+      staleTime: 5 * 60 * 1000, 
+      // On désactive le rechargement auto pour économiser la bande passante (Edge/3G)
+      refetchOnWindowFocus: false, 
+      retry: false, // Évite les boucles de requêtes en cas de coupure réseau
     },
     mutations: {
       retry: false,

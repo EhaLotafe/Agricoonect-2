@@ -1,8 +1,8 @@
+// client/src/components/product-form.tsx
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -14,15 +14,15 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/auth-context";
 import { useIsOnline } from "@/hooks/use-online";
-import { CalendarIcon, Loader2, UploadCloud, WifiOff, CheckCircle2, Tag, MapPin, PlusCircle, X } from "lucide-react";
+import { CalendarIcon, Loader2, PlusCircle, X, WifiOff, CheckCircle2, Tag, MapPin } from "lucide-react";
 import { z } from "zod";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
-// Schéma étendu pour le support de la saisie manuelle et de la traçabilité
+// Extension du schéma pour la gestion dynamique des zones rurales
 const productFormSchema = insertProductSchema.omit({ farmerId: true }).extend({
-  harvestDate: z.string().min(1, "La date de récolte est requise"),
-  commune: z.string().min(1, "Veuillez sélectionner une commune"),
+  harvestDate: z.string().min(1, "Requis"),
+  commune: z.string().min(1, "Sélectionnez une zone"),
   customCommune: z.string().optional(),
   customCategory: z.string().optional(),
 });
@@ -60,6 +60,9 @@ export default function ProductForm({ product, onSuccess }: { product?: Product;
   const selectedCategory = form.watch('category');
   const uploadedImages = form.watch('images') || [];
 
+  /**
+   * Gestionnaire d'upload d'images avec authentification JWT
+   */
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0 || !token) return;
@@ -74,22 +77,23 @@ export default function ProductForm({ product, onSuccess }: { product?: Product;
         headers: { "Authorization": `Bearer ${token}` },
         body: formData,
       });
-
       const data = await res.json();
       if (data.success) {
         form.setValue("images", [...uploadedImages, ...data.urls]);
-        toast({ title: "Image chargée", description: "La photo a été ajoutée à l'annonce." });
+        toast({ title: "Image ajoutée" });
       }
     } catch (err) {
-      toast({ title: "Erreur", description: "Échec de l'envoi de l'image.", variant: "destructive" });
+      toast({ title: "Erreur upload", variant: "destructive" });
     } finally {
       setIsUploading(false);
     }
   };
 
+  /**
+   * Mutation avec logique de file d'attente Offline-First
+   */
   const mutation = useMutation({
     mutationFn: async (values: ProductFormData) => {
-      // 🛠️ NETTOYAGE DES DONNÉES (Argument : Intégrité du SI)
       const finalData = {
         ...values,
         farmerId: Number(user?.id),
@@ -100,10 +104,11 @@ export default function ProductForm({ product, onSuccess }: { product?: Product;
       };
 
       if (!isOnline) {
+        // Sauvegarde locale si le réseau est absent (Résilience technique)
         const queue = JSON.parse(localStorage.getItem("agri_offline_sync") || "[]");
         queue.push({ ...finalData, id: Date.now(), isOffline: true });
         localStorage.setItem("agri_offline_sync", JSON.stringify(queue));
-        throw new Error("OFFLINE");
+        throw new Error("OFFLINE_SAVED");
       }
 
       const res = await apiRequest(
@@ -114,14 +119,13 @@ export default function ProductForm({ product, onSuccess }: { product?: Product;
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: "Félicitations !", description: "Votre produit est enregistré et publié." });
+      toast({ title: "Succès", description: "Produit publié sur le marché." });
       queryClient.invalidateQueries({ queryKey: ['/api/products'] });
-      queryClient.invalidateQueries({ queryKey: ["/api/farmer/products", user?.id] });
       if (onSuccess) onSuccess();
     },
     onError: (err: any) => {
-      if (err.message === "OFFLINE") {
-        toast({ title: "Mode Hors-ligne", description: "Sauvegardé localement. Envoi auto dès que le réseau revient." });
+      if (err.message === "OFFLINE_SAVED") {
+        toast({ title: "Mode Hors-ligne", description: "Annonce sauvegardée localement." });
         if (onSuccess) onSuccess();
       } else {
         toast({ title: "Erreur", description: err.message, variant: "destructive" });
@@ -130,156 +134,116 @@ export default function ProductForm({ product, onSuccess }: { product?: Product;
   });
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="space-y-6 animate-in fade-in duration-500">
       {!isOnline && (
-        <Badge variant="destructive" className="w-full justify-center py-3 rounded-2xl animate-pulse gap-2 font-black border-none shadow-lg">
-          <WifiOff size={18} /> MODE DÉCONNECTÉ ACTIVÉ
+        <Badge variant="destructive" className="w-full justify-center py-2 rounded-xl animate-pulse gap-2 font-bold border-none shadow-md">
+          <WifiOff size={16} /> CONNEXION INTERROMPUE - MODE LOCAL
         </Badge>
       )}
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(data => mutation.mutate(data))} className="space-y-8">
+        <form onSubmit={form.handleSubmit(data => mutation.mutate(data))} className="space-y-6">
           
-          {/* SECTION : NOM ET CATÉGORIE */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <FormField control={form.control} name="name" render={({ field }) => (
               <FormItem>
-                <FormLabel htmlFor="p-name" className="font-black text-[10px] uppercase tracking-widest text-muted-foreground ml-1">Désignation du produit</FormLabel>
-                <FormControl><Input id="p-name" placeholder="ex: Sac de braise" className="h-12 rounded-2xl bg-muted/40 border-none shadow-inner focus:ring-primary" {...field} /></FormControl>
+                <FormLabel className="text-[10px] uppercase font-black opacity-60">Désignation</FormLabel>
+                <FormControl><Input placeholder="ex: Maïs Blanc" className="rounded-xl bg-muted/50 border-none" {...field} /></FormControl>
                 <FormMessage />
               </FormItem>
             )} />
 
             <FormField control={form.control} name="category" render={({ field }) => (
               <FormItem>
-                <FormLabel htmlFor="p-cat" className="font-black text-[10px] uppercase tracking-widest text-muted-foreground ml-1">Catégorie</FormLabel>
+                <FormLabel className="text-[10px] uppercase font-black opacity-60">Catégorie</FormLabel>
                 <Select onValueChange={field.onChange} value={field.value}>
                   <FormControl>
-                    <SelectTrigger id="p-cat" className="h-12 rounded-2xl bg-muted/40 border-none shadow-inner transition-all hover:bg-muted/60">
-                      <div className="flex items-center gap-2"><Tag size={14} className="text-primary" /><SelectValue placeholder="Choisir..." /></div>
+                    <SelectTrigger className="rounded-xl bg-muted/50 border-none">
+                      <div className="flex items-center gap-2"><Tag size={14}/><SelectValue placeholder="Choisir..." /></div>
                     </SelectTrigger>
                   </FormControl>
-                  <SelectContent className="rounded-2xl border-none shadow-2xl bg-popover/95 backdrop-blur-md">
-                    {categories.map(c => <SelectItem key={c} value={c} className="rounded-lg">{c}</SelectItem>)}
-                    <SelectItem value="Autre" className="font-black text-primary italic rounded-lg">+ AUTRE CATÉGORIE</SelectItem>
+                  <SelectContent>
+                    {categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    <SelectItem value="Autre" className="font-bold text-primary italic">+ AUTRE</SelectItem>
                   </SelectContent>
                 </Select>
                 {selectedCategory === "Autre" && (
-                  <FormField control={form.control} name="customCategory" render={({ field }) => (
-                    <Input {...field} id="p-custom-cat" placeholder="Précisez la catégorie..." className="mt-2 h-11 bg-primary/5 border-primary/20 rounded-xl animate-in slide-in-from-top-2" />
-                  )} />
+                  <Input {...form.register("customCategory")} placeholder="Précisez..." className="mt-2 rounded-xl" />
                 )}
               </FormItem>
             )} />
           </div>
 
-          {/* SECTION : PRIX ET STOCK (GLASS DESIGN) */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-6 rounded-[2rem] bg-muted/30 dark:bg-slate-900/50 backdrop-blur-sm border border-border/50 shadow-2xl">
+          <div className="grid grid-cols-3 gap-3 p-4 rounded-2xl bg-muted/30 border border-border/50">
             <FormField control={form.control} name="price" render={({ field }) => (
-              <FormItem><FormLabel htmlFor="p-price" className="text-[10px] font-black uppercase opacity-50 ml-1">Prix (CDF)</FormLabel>
-              <Input id="p-price" type="number" {...field} value={field.value || ""} onChange={e => field.onChange(e.target.value)} className="h-11 bg-background/50 rounded-xl font-bold border-none" /></FormItem>
+              <FormItem><FormLabel className="text-[10px] font-black uppercase opacity-40">Prix (FC)</FormLabel>
+              <Input type="number" {...field} className="rounded-lg border-none bg-background/50 font-bold" /></FormItem>
             )} />
             <FormField control={form.control} name="unit" render={({ field }) => (
-              <FormItem><FormLabel htmlFor="p-unit" className="text-[10px] font-black uppercase opacity-50 ml-1">Unité</FormLabel>
+              <FormItem><FormLabel className="text-[10px] font-black uppercase opacity-40">Unité</FormLabel>
               <Select onValueChange={field.onChange} value={field.value}>
-                <SelectTrigger id="p-unit" className="h-11 bg-background/50 rounded-xl font-bold border-none"><SelectValue /></SelectTrigger>
-                <SelectContent className="rounded-xl border-none bg-popover/95 backdrop-blur-md">{['kg', 'sac', 'seau', 'botte', 'tas', 'pièce'].map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                <SelectTrigger className="rounded-lg border-none bg-background/50 font-bold"><SelectValue /></SelectTrigger>
+                <SelectContent>{['kg', 'sac', 'seau', 'botte', 'tas'].map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
               </Select></FormItem>
             )} />
             <FormField control={form.control} name="quantity" render={({ field }) => (
-              <FormItem><FormLabel htmlFor="p-qty" className="text-[10px] font-black uppercase opacity-50 ml-1">Quantité</FormLabel>
-              <Input id="p-qty" type="number" {...field} value={field.value || 0} onChange={e => field.onChange(Number(e.target.value))} className="h-11 bg-background/50 rounded-xl font-bold border-none" /></FormItem>
+              <FormItem><FormLabel className="text-[10px] font-black uppercase opacity-40">Quantité</FormLabel>
+              <Input type="number" {...field} onChange={e => field.onChange(Number(e.target.value))} className="rounded-lg border-none bg-background/50 font-bold" /></FormItem>
             )} />
           </div>
 
-          {/* PHOTOS DU PRODUIT */}
-          <div className="space-y-4">
-            <FormLabel className="font-black text-[10px] uppercase tracking-widest text-muted-foreground ml-1">Photos de la récolte (Preuve de qualité)</FormLabel>
-            <div className="grid grid-cols-3 sm:grid-cols-5 gap-4">
+          <div className="space-y-3">
+            <FormLabel className="text-[10px] uppercase font-black opacity-60">Photos du produit (Preuve Qualité)</FormLabel>
+            <div className="flex gap-3 overflow-x-auto pb-2">
               {uploadedImages.map((url, index) => (
-                <div key={index} className="relative aspect-square rounded-2xl overflow-hidden border bg-muted group shadow-md">
-                  <img src={url} className="w-full h-full object-cover" alt="Aperçu" />
-                  <button type="button" onClick={() => form.setValue("images", uploadedImages.filter((_, i) => i !== index))} className="absolute top-1 right-1 bg-destructive text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"><X size={12} /></button>
+                <div key={index} className="relative w-20 h-20 shrink-0 rounded-xl overflow-hidden border">
+                  <img src={url} className="w-full h-full object-cover" />
+                  <button type="button" onClick={() => form.setValue("images", uploadedImages.filter((_, i) => i !== index))} className="absolute top-0 right-0 bg-destructive text-white p-1"><X size={10}/></button>
                 </div>
               ))}
-              <label className="flex flex-col items-center justify-center aspect-square rounded-2xl border-2 border-dashed border-primary/30 hover:border-primary bg-primary/5 cursor-pointer transition-all hover:bg-primary/10">
-                {isUploading ? <Loader2 className="animate-spin text-primary" /> : <PlusCircle className="text-primary" size={24} />}
-                <span className="text-[9px] font-black mt-1 text-primary tracking-widest uppercase">AJOUTER</span>
-                <input type="file" multiple accept="image/*" className="hidden" onChange={handleImageUpload} disabled={isUploading} id="p-images" />
+              <label className="flex flex-col items-center justify-center w-20 h-20 rounded-xl border-2 border-dashed border-primary/30 bg-primary/5 cursor-pointer hover:bg-primary/10 transition-colors">
+                {isUploading ? <Loader2 className="animate-spin text-primary" size={16}/> : <PlusCircle className="text-primary" size={20}/>}
+                <input type="file" multiple className="hidden" onChange={handleImageUpload} disabled={isUploading} />
               </label>
             </div>
           </div>
 
-          {/* DESCRIPTION */}
           <FormField control={form.control} name="description" render={({ field }) => (
             <FormItem>
-              <FormLabel htmlFor="p-desc" className="font-black text-[10px] uppercase tracking-widest text-muted-foreground ml-1">
-                Détails sur la culture (Argument Qualité)
-              </FormLabel>
-              <FormControl>
-                <Textarea 
-                  id="p-desc" 
-                  placeholder="ex: Récolté à la main sans engrais chimiques..." 
-                  className="h-28 rounded-2xl bg-muted/40 border-none shadow-inner p-4" 
-                  {...field} 
-                  value={field.value ?? ""} // ✅ FIX: Remplace null par une chaîne vide
-                />
-              </FormControl>
-              <FormMessage />
+              <FormLabel className="text-[10px] uppercase font-black opacity-60">Détails de culture</FormLabel>
+              <FormControl><Textarea placeholder="Pratiques culturales..." className="rounded-xl bg-muted/50 border-none min-h-[80px]" {...field} value={field.value ?? ""} /></FormControl>
             </FormItem>
           )} />
 
-          {/* TRAÇABILITÉ : DATE DE RÉCOLTE */}
-          <FormField control={form.control} name="harvestDate" render={({ field }) => (
-            <FormItem className="space-y-1">
-              <FormLabel htmlFor="p-date" className="flex items-center gap-2 text-brand-orange font-black text-[10px] uppercase tracking-widest ml-1">
-                <CalendarIcon size={16} /> Date de récolte (Indicateur de fraîcheur)
-              </FormLabel>
-              <FormControl><Input id="p-date" type="date" {...field} className="h-12 rounded-2xl bg-muted/40 border-none shadow-inner" /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
-
-          {/* LOCALISATION */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <FormField control={form.control} name="commune" render={({ field }) => (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormField control={form.control} name="harvestDate" render={({ field }) => (
               <FormItem>
-                <FormLabel htmlFor="p-com" className="font-black text-[10px] uppercase tracking-widest text-muted-foreground ml-1">Commune rurale</FormLabel>
-                <Select onValueChange={field.onChange} value={field.value}>
-                  <FormControl>
-                    <SelectTrigger id="p-com" className="h-12 rounded-2xl bg-muted/40 border-none shadow-inner"><div className="flex items-center gap-2"><MapPin size={14} className="text-primary" /><SelectValue placeholder="Zone..." /></div></SelectTrigger>
-                  </FormControl>
-                  <SelectContent className="rounded-2xl border-none shadow-2xl bg-popover/95 backdrop-blur-md">
-                    {communes.map(c => <SelectItem key={c} value={c} className="rounded-lg">{c}</SelectItem>)}
-                    <SelectItem value="Autre" className="font-black text-primary italic rounded-lg">+ AUTRE ZONE</SelectItem>
-                  </SelectContent>
-                </Select>
-                {selectedCommune === "Autre" && (
-                  <FormField control={form.control} name="customCommune" render={({ field }) => (
-                    <Input {...field} id="p-custom-com" placeholder="Nom de votre village..." className="mt-2 h-11 bg-primary/5 border-primary/20 rounded-xl animate-in slide-in-from-top-2" />
-                  )} />
-                )}
+                <FormLabel className="flex items-center gap-2 text-[10px] uppercase font-black opacity-60"><CalendarIcon size={12}/> Date de récolte</FormLabel>
+                <FormControl><Input type="date" {...field} className="rounded-xl bg-muted/50 border-none" /></FormControl>
               </FormItem>
             )} />
             
-            <FormField control={form.control} name="location" render={({ field }) => (
+            <FormField control={form.control} name="commune" render={({ field }) => (
               <FormItem>
-                <FormLabel htmlFor="p-loc" className="font-black text-[10px] uppercase tracking-widest text-muted-foreground ml-1">Localisation précise</FormLabel>
-                <FormControl><Input id="p-loc" placeholder="ex: Ferme Futuka" className="h-12 rounded-2xl bg-muted/40 border-none shadow-inner" {...field} /></FormControl>
+                <FormLabel className="text-[10px] uppercase font-black opacity-60">Commune rurale</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <FormControl><SelectTrigger className="rounded-xl bg-muted/50 border-none"><div className="flex items-center gap-2"><MapPin size={14}/><SelectValue placeholder="Zone..." /></div></SelectTrigger></FormControl>
+                  <SelectContent>
+                    {communes.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    <SelectItem value="Autre" className="italic font-bold">+ AUTRE ZONE</SelectItem>
+                  </SelectContent>
+                </Select>
+                {selectedCommune === "Autre" && <Input {...form.register("customCommune")} placeholder="Village..." className="mt-2 rounded-xl" />}
               </FormItem>
             )} />
           </div>
 
-          {/* BOUTON DYNAMIQUE */}
           <Button 
             type="submit" 
-            className={cn(
-              "w-full h-16 font-black text-lg shadow-2xl transition-all active:scale-[0.97] rounded-[1.5rem] uppercase tracking-widest",
-              isOnline ? "bg-primary text-white" : "bg-brand-orange text-white"
-            )}
+            className={cn("w-full h-14 font-black rounded-2xl shadow-xl uppercase tracking-widest", isOnline ? "bg-primary" : "bg-orange-600")}
             disabled={mutation.isPending || isUploading}
           >
-            {mutation.isPending ? <Loader2 className="animate-spin" size={24} /> : (isOnline ? <span className="flex items-center gap-2">PUBLIER MAINTENANT <CheckCircle2 size={24}/></span> : "SAUVEGARDER (MODE OFFLINE)")}
+            {mutation.isPending ? <Loader2 className="animate-spin" /> : (isOnline ? "Publier l'annonce" : "Sauvegarder en local")}
           </Button>
         </form>
       </Form>

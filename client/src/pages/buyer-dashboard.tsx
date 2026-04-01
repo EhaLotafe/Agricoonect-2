@@ -1,3 +1,4 @@
+// client/src/pages/buyer-dashboard.tsx
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,7 +9,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Textarea } from "@/components/ui/textarea";
 import { 
   ShoppingCart, Star, Package, CheckCircle, Clock, 
-  AlertCircle, RefreshCw, LogIn, User, MapPin, PhoneCall, MessageSquare 
+  AlertCircle, RefreshCw, User, PhoneCall 
 } from "lucide-react";
 import { useAuth } from "@/context/auth-context";
 import { format } from "date-fns";
@@ -19,13 +20,13 @@ import { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
-import { formatCurrency, cn, getCommuneColor } from "@/lib/utils";
+import { formatCurrency, cn } from "@/lib/utils";
 import { OrderWithDetails } from "@/lib/types";
 import { Link, useLocation } from "wouter";
 
 const reviewSchema = z.object({
   rating: z.number().min(1).max(5),
-  comment: z.string().min(5, "Votre avis est précieux, merci de l'étoffer un peu."),
+  comment: z.string().min(5, "Merci d'étoffer votre avis."),
 });
 
 type ReviewFormData = z.infer<typeof reviewSchema>;
@@ -37,23 +38,23 @@ export default function BuyerDashboard() {
   const [selectedOrder, setSelectedOrder] = useState<OrderWithDetails | null>(null);
   const [showReviewDialog, setShowReviewDialog] = useState(false);
 
-  // 🛡️ SÉCURISATION RBAC (Argument Chapitre 3)
+  /**
+   * 🛡️ CONTRÔLE D'ACCÈS RBAC
+   */
   if (!isAuthenticated || user?.userType !== "buyer") {
     return (
       <div className="container mx-auto px-4 py-20 flex justify-center">
-        <Card className="max-w-md border-border shadow-2xl rounded-[2rem] overflow-hidden animate-in fade-in zoom-in-95 bg-card">
-          <CardContent className="p-10 text-center flex flex-col items-center">
-            <div className="p-4 bg-destructive/10 rounded-full mb-6 text-destructive"><AlertCircle size={40} /></div>
-            <h3 className="text-2xl font-black mb-2 uppercase tracking-tighter">Accès Client Requis</h3>
-            <p className="text-muted-foreground mb-8">Veuillez vous connecter avec un compte acheteur pour suivre vos produits frais.</p>
-            <Button onClick={() => setLocation("/login")} className="w-full bg-primary font-black py-6 rounded-2xl shadow-lg">SE CONNECTER</Button>
-          </CardContent>
+        <Card className="max-w-md border-none shadow-2xl rounded-[2.5rem] bg-card text-center p-10">
+          <div className="p-4 bg-destructive/10 rounded-full mb-6 text-destructive inline-block"><AlertCircle size={40} /></div>
+          <h3 className="text-2xl font-black uppercase tracking-tighter">Accès Client Requis</h3>
+          <p className="text-muted-foreground mb-8 italic">Espace réservé au suivi des achats urbains.</p>
+          <Button onClick={() => setLocation("/login")} className="w-full h-14 bg-primary rounded-2xl font-black shadow-lg">SE CONNECTER</Button>
         </Card>
       </div>
     );
   }
 
-  // --- REQUÊTE COMMANDES ---
+  // --- COLLECTE DES DONNÉES D'ACHAT ---
   const { data: orders = [], isLoading: ordersLoading, refetch } = useQuery<OrderWithDetails[]>({
     queryKey: ["/api/buyer/orders", user.id],
     queryFn: async () => (await apiRequest('GET', `/api/buyer/${user.id}/orders`)).json(),
@@ -64,7 +65,7 @@ export default function BuyerDashboard() {
     defaultValues: { rating: 5, comment: '' },
   });
 
-  // --- MUTATION AVIS ---
+  // --- MUTATION : FIDÉLISATION PAR L'ÉCOUTE (CHAPITRE 1) ---
   const reviewMutation = useMutation({
     mutationFn: async (data: ReviewFormData) => {
       if (!selectedOrder) return;
@@ -76,19 +77,18 @@ export default function BuyerDashboard() {
       });
     },
     onSuccess: () => {
-      toast({ title: "Merci !", description: "Votre avis a été publié pour la communauté." });
+      toast({ title: "Avis publié", description: "Merci de contribuer à la transparence du marché." });
       setShowReviewDialog(false);
       reviewForm.reset();
       queryClient.invalidateQueries({ queryKey: ["/api/buyer/orders"] });
-    },
-    onError: (error: any) => toast({ title: "Erreur", description: error.message, variant: "destructive" }),
+    }
   });
 
   const getStatusInfo = (status: string) => {
     const configs: Record<string, { label: string, color: string, icon: any }> = {
-      pending: { label: "Attente", color: "bg-yellow-500/10 text-yellow-600 border-yellow-200", icon: Clock },
+      pending: { label: "En attente", color: "bg-yellow-500/10 text-yellow-600 border-yellow-200", icon: Clock },
       confirmed: { label: "Validée", color: "bg-blue-500/10 text-blue-600 border-blue-200", icon: CheckCircle },
-      delivered: { label: "Reçue", color: "bg-primary/10 text-primary border-primary/20", icon: Package },
+      delivered: { label: "Reçue", color: "bg-green-500/10 text-green-600 border-green-200", icon: Package },
       cancelled: { label: "Annulée", color: "bg-red-500/10 text-red-600 border-red-200", icon: AlertCircle },
     };
     return configs[status] || { label: status, color: "bg-muted", icon: Package };
@@ -98,41 +98,42 @@ export default function BuyerDashboard() {
   const delivered = orders.filter(o => o.status === 'delivered');
 
   return (
-    <div className="container mx-auto px-4 py-8 space-y-10 transition-all duration-300">
+    <div className="container mx-auto px-4 py-8 space-y-10 animate-in fade-in duration-500">
       
-      {/* 🟢 HEADER STATS */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-card border p-8 rounded-[2rem] shadow-sm">
+      {/* Header Dashboard */}
+      <div className="flex flex-col md:flex-row justify-between items-center gap-6 bg-card border p-8 rounded-[2.5rem] shadow-sm">
         <div className="space-y-1">
-          <h1 className="text-4xl font-black tracking-tighter uppercase">Mes <span className="text-primary">Achats</span></h1>
-          <p className="text-muted-foreground font-medium italic">Suivi de vos produits en provenance directe des communes rurales.</p>
+          <h1 className="text-3xl font-black tracking-tighter uppercase">Mes <span className="text-primary">Achats Frais</span></h1>
+          <p className="text-muted-foreground font-medium italic">Suivi des récoltes commandées en circuit court.</p>
         </div>
-        <div className="flex gap-2">
-           <Button onClick={() => refetch()} variant="outline" size="sm" className="rounded-xl h-12 px-6 gap-2 font-black border-primary/20 hover:bg-primary/5">
-            <RefreshCw size={14} className={cn(ordersLoading && "animate-spin")} /> ACTUALISER
+        <div className="flex gap-3">
+           <Button onClick={() => refetch()} variant="ghost" className="rounded-xl h-12 px-6 border">
+            <RefreshCw size={14} className={cn("mr-2", ordersLoading && "animate-spin")} /> ACTUALISER
           </Button>
-          <Badge className="bg-primary/10 text-primary border-none py-2 px-4 rounded-xl font-black">{user.firstName}</Badge>
+          <Badge className="bg-primary/10 text-primary py-2 px-4 rounded-xl font-black uppercase text-[10px] tracking-widest">ESPACE CLIENT</Badge>
         </div>
       </div>
 
+      {/* Statistiques Quantitatives de consommation */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <QuickStat title="Commandes" value={orders.length} icon={<ShoppingCart size={20}/>} color="text-slate-600" />
-        <QuickStat title="En attente" value={pending.length} icon={<Clock size={20}/>} color="text-yellow-600" />
-        <QuickStat title="Livrées" value={delivered.length} icon={<Package size={20}/>} color="text-primary" />
-        <QuickStat title="Points" value={delivered.length * 10} icon={<Star size={20}/>} color="text-brand-orange" />
+        <QuickStat title="Total Commandes" value={orders.length} icon={<ShoppingCart />} color="text-slate-600" />
+        <QuickStat title="À Recevoir" value={pending.length} icon={<Clock />} color="text-yellow-600" />
+        <QuickStat title="Déjà Livrées" value={delivered.length} icon={<Package />} color="text-primary" />
+        <QuickStat title="Évaluations" value={delivered.length} icon={<Star />} color="text-orange-500" />
       </div>
 
       <Tabs defaultValue="all" className="w-full">
-        <TabsList className="bg-muted p-1 rounded-2xl mb-8 border shadow-inner">
-          <TabsTrigger value="all" className="px-8 py-3 font-bold rounded-xl uppercase text-[10px] tracking-widest">Toutes</TabsTrigger>
-          <TabsTrigger value="pending" className="px-8 py-3 font-bold rounded-xl uppercase text-[10px] tracking-widest relative">
-            En attente {pending.length > 0 && <span className="ml-2 h-2 w-2 bg-brand-orange rounded-full animate-ping" />}
+        <TabsList className="bg-muted p-1 rounded-2xl mb-8 border">
+          <TabsTrigger value="all" className="px-8 py-3 font-bold rounded-xl uppercase text-[10px]">Toutes</TabsTrigger>
+          <TabsTrigger value="pending" className="px-8 py-3 font-bold rounded-xl uppercase text-[10px] relative">
+            En attente {pending.length > 0 && <span className="ml-2 bg-orange-500 text-white px-1.5 rounded-full text-[8px]">{pending.length}</span>}
           </TabsTrigger>
-          <TabsTrigger value="delivered" className="px-8 py-3 font-bold rounded-xl uppercase text-[10px] tracking-widest">Livrées</TabsTrigger>
+          <TabsTrigger value="delivered" className="px-8 py-3 font-bold rounded-xl uppercase text-[10px]">Livrées</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="all" className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
+        <TabsContent value="all" className="space-y-4">
           {ordersLoading ? (
-            <div className="flex justify-center py-20"><RefreshCw className="animate-spin text-primary" size={40} /></div>
+            <div className="flex justify-center py-20"><RefreshCw className="animate-spin text-primary" size={32} /></div>
           ) : orders.length > 0 ? (
             orders.map(order => (
               <OrderRow 
@@ -143,56 +144,48 @@ export default function BuyerDashboard() {
               />
             ))
           ) : (
-            <EmptyState />
+            <div className="text-center py-24 border-2 border-dashed rounded-[3rem] opacity-30">
+               <ShoppingCart size={48} className="mx-auto mb-4" />
+               <p className="italic">Aucune transaction enregistrée.</p>
+            </div>
           )}
         </TabsContent>
       </Tabs>
 
-      {/* 📝 DIALOG AVIS CLIENT */}
+      {/* MODAL NOTATION (Qualité SI) */}
       <Dialog open={showReviewDialog} onOpenChange={setShowReviewDialog}>
-        <DialogContent className="sm:max-w-[450px] rounded-[2.5rem] bg-card border-border shadow-2xl p-8">
+        <DialogContent className="rounded-[2.5rem] p-8 border-none shadow-2xl">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-black tracking-tighter">Noter le producteur</DialogTitle>
-            <DialogDescription className="font-medium">Aidez les autres habitants de Lubumbashi à trouver les meilleurs produits.</DialogDescription>
+            <DialogTitle className="text-2xl font-black uppercase tracking-tighter">Évaluer la récolte</DialogTitle>
+            <DialogDescription className="font-medium">Votre retour aide à valoriser les meilleurs producteurs de Lubumbashi.</DialogDescription>
           </DialogHeader>
           
-          <div className="bg-muted/50 p-4 rounded-2xl border border-border/50 my-6 flex items-center gap-4">
-             <div className="w-12 h-12 bg-primary/20 rounded-xl flex items-center justify-center text-primary font-bold">{selectedOrder?.product.name[0]}</div>
-             <div>
-                <p className="font-bold text-foreground">{selectedOrder?.product.name}</p>
-                <p className="text-[10px] uppercase font-black text-muted-foreground tracking-widest">Vendeur : {selectedOrder?.farmer.firstName}</p>
-             </div>
+          <div className="bg-muted/50 p-4 rounded-2xl flex items-center gap-4 my-4">
+             <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center text-white font-black">{selectedOrder?.product.name[0]}</div>
+             <p className="font-black uppercase text-sm">{selectedOrder?.product.name}</p>
           </div>
 
           <Form {...reviewForm}>
             <form onSubmit={reviewForm.handleSubmit(data => reviewMutation.mutate(data))} className="space-y-6">
-              <FormField
-                control={reviewForm.control}
-                name="rating"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="font-bold text-xs uppercase tracking-widest opacity-70">Qualité du produit</FormLabel>
-                    <div className="flex gap-2">
-                      {[1, 2, 3, 4, 5].map((s) => (
-                        <Star key={s} size={32} className={cn("cursor-pointer transition-all active:scale-75", s <= field.value ? "fill-yellow-400 text-yellow-400" : "text-slate-200 dark:text-slate-800")} onClick={() => field.onChange(s)} />
-                      ))}
-                    </div>
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={reviewForm.control}
-                name="comment"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="font-bold text-xs uppercase tracking-widest opacity-70">Commentaire détaillé</FormLabel>
-                    <FormControl><Textarea placeholder="Racontez-nous la fraîcheur, le goût..." className="rounded-2xl bg-muted/20 border-border h-24" {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <Button type="submit" className="w-full h-14 bg-primary font-black rounded-2xl shadow-xl shadow-primary/20 uppercase tracking-widest text-xs" disabled={reviewMutation.isPending}>
-                {reviewMutation.isPending ? <RefreshCw className="animate-spin mr-2"/> : "PUBLIER MON AVIS"}
+              <FormField control={reviewForm.control} name="rating" render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-[10px] font-black uppercase opacity-60">Qualité constatée</FormLabel>
+                  <div className="flex gap-2">
+                    {[1, 2, 3, 4, 5].map((s) => (
+                      <Star key={s} size={28} className={cn("cursor-pointer transition-transform active:scale-75", s <= field.value ? "fill-yellow-400 text-yellow-400" : "text-slate-200")} onClick={() => field.onChange(s)} />
+                    ))}
+                  </div>
+                </FormItem>
+              )} />
+              <FormField control={reviewForm.control} name="comment" render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-[10px] font-black uppercase opacity-60">Commentaire</FormLabel>
+                  <FormControl><Textarea placeholder="Fraîcheur, goût, ponctualité..." className="rounded-2xl bg-muted/20 border-none h-24" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <Button type="submit" className="w-full h-14 bg-primary font-black rounded-2xl shadow-xl uppercase tracking-widest text-xs" disabled={reviewMutation.isPending}>
+                {reviewMutation.isPending ? <RefreshCw className="animate-spin" /> : "PUBLIER MON AVIS"}
               </Button>
             </form>
           </Form>
@@ -206,12 +199,12 @@ export default function BuyerDashboard() {
 
 function QuickStat({ title, value, icon, color }: any) {
   return (
-    <Card className="border-none shadow-md bg-card group hover:shadow-xl transition-all">
+    <Card className="border-none shadow-md bg-card rounded-[1.5rem]">
       <CardContent className="p-6 flex items-center gap-4">
-        <div className={cn("p-3 rounded-2xl bg-muted transition-transform group-hover:rotate-6", color)}>{icon}</div>
+        <div className={cn("p-3 rounded-xl bg-muted transition-colors", color)}>{icon}</div>
         <div>
-          <p className="text-[10px] uppercase font-black text-muted-foreground tracking-widest">{title}</p>
-          <p className="text-2xl font-black tracking-tighter text-foreground mt-0.5">{value}</p>
+          <p className="text-[9px] uppercase font-black text-muted-foreground tracking-widest">{title}</p>
+          <p className="text-2xl font-black text-foreground">{value}</p>
         </div>
       </CardContent>
     </Card>
@@ -221,29 +214,27 @@ function QuickStat({ title, value, icon, color }: any) {
 function OrderRow({ order, statusInfo, onReview }: { order: OrderWithDetails, statusInfo: any, onReview: () => void }) {
   const StatusIcon = statusInfo.icon;
   return (
-    <Card className="overflow-hidden border-border bg-card hover:bg-muted/5 transition-all border-l-8 rounded-2xl shadow-sm" style={{ borderLeftColor: 'currentColor' }}>
+    <Card className="overflow-hidden border bg-card rounded-2xl shadow-sm hover:shadow-md transition-shadow">
       <CardContent className="p-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-          <div className="space-y-1 flex-1">
+        <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+          <div className="space-y-2 flex-1">
             <div className="flex items-center gap-3">
-              <h3 className="font-black text-xl tracking-tight text-foreground">{order.product.name}</h3>
-              <Badge className={cn("text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full", statusInfo.color)}>
-                <StatusIcon size={12} className="mr-1.5" /> {statusInfo.label}
+              <h3 className="font-black text-xl uppercase tracking-tighter">{order.product.name}</h3>
+              <Badge className={cn("text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border-none", statusInfo.color)}>
+                <StatusIcon size={10} className="mr-1" /> {statusInfo.label}
               </Badge>
             </div>
-            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest italic">
-              Commande #{order.id} • {format(new Date(order.createdAt), 'dd MMMM yyyy', { locale: fr })}
+            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">
+              N°{order.id} • {format(new Date(order.createdAt), 'dd MMMM yyyy', { locale: fr })}
             </p>
-            
-            <div className="flex flex-wrap gap-6 pt-4">
-              <div className="flex items-center gap-2"><div className="p-1.5 bg-primary/10 rounded-lg text-primary"><User size={14}/></div> <span className="text-sm font-bold">{order.farmer.firstName}</span></div>
-              <div className="flex items-center gap-2 font-black text-brand-orange text-sm uppercase"><span>{formatCurrency(order.totalPrice)}</span></div>
-              <div className="flex items-center gap-2 text-muted-foreground text-sm font-bold italic"><Package size={14}/> <span>{order.quantity} {order.product.unit}</span></div>
+            <div className="flex gap-4 pt-2">
+              <span className="text-sm font-black text-primary">{formatCurrency(order.totalPrice)}</span>
+              <span className="text-sm font-bold text-muted-foreground italic">{order.quantity} {order.product.unit}s</span>
             </div>
           </div>
           
-          <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-            {/* ✅ Bouton de contact direct (Désenclavement rural) */}
+          <div className="flex gap-2 w-full md:w-auto">
+            {/* ☎️ Désenclavement rural : Contact direct par téléphone */}
             <a href={`tel:${order.farmer.phone}`} className="flex-1 md:flex-none">
                 <Button variant="outline" size="sm" className="w-full rounded-xl gap-2 font-bold h-11 border-primary/20 text-primary">
                     <PhoneCall size={16} /> APPELER
@@ -251,27 +242,16 @@ function OrderRow({ order, statusInfo, onReview }: { order: OrderWithDetails, st
             </a>
             
             {order.status === 'delivered' && (
-              <Button size="sm" variant="outline" className="flex-1 md:flex-none border-brand-orange text-brand-orange hover:bg-brand-orange hover:text-white font-bold rounded-xl h-11 transition-all shadow-sm" onClick={onReview}>
-                <Star size={16} className="mr-2" /> NOTER
+              <Button size="sm" className="flex-1 md:flex-none bg-orange-500 text-white font-bold rounded-xl h-11 shadow-lg" onClick={onReview}>
+                NOTER
               </Button>
             )}
             <Link href={`/products/${order.product.id}`} className="flex-1 md:flex-none">
-              <Button size="sm" variant="secondary" className="w-full rounded-xl font-bold h-11 px-8 shadow-sm">VOIR PRODUIT</Button>
+              <Button size="sm" variant="secondary" className="w-full rounded-xl font-bold h-11 border">DÉTAILS</Button>
             </Link>
           </div>
         </div>
       </CardContent>
     </Card>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div className="text-center py-24 border-2 border-dashed rounded-[3rem] bg-muted/10">
-      <ShoppingCart size={64} className="mx-auto text-muted-foreground/10 mb-6" />
-      <h3 className="text-2xl font-black tracking-tight mb-2">Aucun achat détecté</h3>
-      <p className="text-muted-foreground mb-10 max-w-xs mx-auto font-medium text-sm leading-relaxed italic">Vous n'avez pas encore passé de commande directe auprès de nos producteurs ruraux.</p>
-      <Link href="/products"><Button className="bg-primary px-10 h-14 rounded-2xl font-black shadow-xl shadow-primary/20 transition-all hover:scale-105 active:scale-95 uppercase tracking-widest text-xs">ACCÉDER AU MARCHÉ</Button></Link>
-    </div>
   );
 }

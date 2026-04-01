@@ -1,14 +1,14 @@
 import {
-  users, products, orders, reviews, contacts,
+  users, products, orders, reviews, contacts, surveys, // ✅ Ajout de surveys
   type User, type InsertUser, type Product, type InsertProduct,
   type Order, type InsertOrder, type Review, type InsertReview,
   type Contact, type InsertContact,
+  type Survey, type InsertSurvey // ✅ Ajout des types Survey
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, like, sql } from "drizzle-orm";
 import { aliasedTable } from "drizzle-orm";
 
-// Alias pour les jointures complexes (Acheteur / Vendeur)
 const farmers = aliasedTable(users, "farmers");
 const buyers = aliasedTable(users, "buyers");
 
@@ -21,11 +21,16 @@ export interface IStorage {
   updateUser(id: number, user: Partial<InsertUser>): Promise<User>;
   getAllUsers(): Promise<User[]>;
 
+  // ✅ NOUVEAU : SONDAGES & ANALYSE MARKETING
+  createSurvey(survey: InsertSurvey): Promise<Survey>;
+  getMarketTrends(): Promise<any[]>;
+  getAverageTargetPrice(productName: string): Promise<number>;
+
   // Produits
   getProduct(id: number): Promise<Product | undefined>;
   getProductWithFarmer(id: number): Promise<any>;
   getProductsByFarmer(farmerId: number): Promise<Product[]>;
-  getAllProducts(filters?: any): Promise<any[]>; // Signature propre
+  getAllProducts(filters?: any): Promise<any[]>;
   createProduct(product: InsertProduct): Promise<Product>;
   updateProduct(id: number, product: Partial<InsertProduct>): Promise<Product>;
   deleteProduct(id: number): Promise<void>;
@@ -72,13 +77,46 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(users).orderBy(desc(users.createdAt));
   }
 
+  // --- ✅ LOGIQUE MARKETING (SONDAGES) ---
+
+  async createSurvey(surveyData: InsertSurvey) {
+    const [survey] = await db.insert(surveys).values(surveyData).returning();
+    return survey;
+  }
+
+  /**
+   * 📊 Analyse les tendances du marché
+   * Calcule le top des produits les plus recherchés selon les sondages
+   */
+  async getMarketTrends() {
+    const result = await db
+      .select({
+        product: surveys.productSought,
+        demandCount: sql<number>`count(*)`,
+        totalQuantityRequested: sql<number>`sum(${surveys.quantity})`
+      })
+      .from(surveys)
+      .groupBy(surveys.productSought)
+      .orderBy(desc(sql`count(*)`));
+    return result;
+  }
+
+  /**
+   * 💰 Calcule le prix moyen accepté par les consommateurs pour un produit donné
+   */
+  async getAverageTargetPrice(productName: string) {
+    const result = await db
+      .select({ avgPrice: sql<number>`avg(${surveys.targetPrice})` })
+      .from(surveys)
+      .where(eq(surveys.productSought, productName));
+    return Number(result[0]?.avgPrice || 0);
+  }
+
   // --- PRODUITS ---
   async getProduct(id: number) {
     const [product] = await db.select().from(products).where(eq(products.id, id));
     return product;
   }
-
-  // server/storage.ts
 
   async getProductWithFarmer(id: number) {
     const result = await db
@@ -86,22 +124,14 @@ export class DatabaseStorage implements IStorage {
       .from(products)
       .leftJoin(users, eq(products.farmerId, users.id))
       .where(eq(products.id, id));
-
     if (result.length === 0) return undefined;
-    // On retourne le produit en y injectant les infos du farmer
-    return { 
-      ...result[0].product, 
-      farmer: result[0].farmer 
-    };
+    return { ...result[0].product, farmer: result[0].farmer! };
   }
 
   async getAllProducts(filters: any) {
     const conditions = [];
-    
-    // Logique de filtrage intelligente (Admin vs Public)
     if (filters?.isApproved === true) conditions.push(eq(products.isApproved, true));
     if (filters?.isApproved === false) conditions.push(eq(products.isApproved, false));
-    // Si filters.isApproved est undefined, on ne filtre pas (comportement Admin)
 
     if (filters?.category) conditions.push(eq(products.category, filters.category));
     if (filters?.commune) conditions.push(eq(products.commune, filters.commune));
@@ -120,6 +150,8 @@ export class DatabaseStorage implements IStorage {
       .from(products)
       .leftJoin(users, eq(products.farmerId, users.id));
 
+    // Si on a des tendances, on pourrait trier par popularité ici. 
+    // Pour l'instant on trie par date de création.
     const result = conditions.length > 0 
       ? await query.where(and(...conditions)).orderBy(desc(products.createdAt))
       : await query.orderBy(desc(products.createdAt));
@@ -210,7 +242,6 @@ export class DatabaseStorage implements IStorage {
       if (!result) return [];
       return result.map(r => ({ ...r.review, buyer: r.buyer || { firstName: "Utilisateur", lastName: "Anonyme" } }));
     } catch (error) {
-      console.error("Erreur Reviews:", error);
       return [];
     }
   }

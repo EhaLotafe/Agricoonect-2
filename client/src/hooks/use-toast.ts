@@ -1,13 +1,7 @@
 // client/src/hooks/use-toast.ts
 import * as React from "react"
+import type { ToastActionElement, ToastProps } from "@/components/ui/toast"
 
-import type {
-  ToastActionElement,
-  ToastProps,
-} from "@/components/ui/toast"
-
-
-// ✅ Ajustement du délai : 5 secondes est le standard pour une bonne UX
 const TOAST_LIMIT = 3
 const TOAST_REMOVE_DELAY = 5000 
 
@@ -35,22 +29,10 @@ function genId() {
 type ActionType = typeof actionTypes
 
 type Action =
-  | {
-      type: ActionType["ADD_TOAST"]
-      toast: ToasterToast
-    }
-  | {
-      type: ActionType["UPDATE_TOAST"]
-      toast: Partial<ToasterToast>
-    }
-  | {
-      type: ActionType["DISMISS_TOAST"]
-      toastId?: ToasterToast["id"]
-    }
-  | {
-      type: ActionType["REMOVE_TOAST"]
-      toastId?: ToasterToast["id"]
-    }
+  | { type: ActionType["ADD_TOAST"]; toast: ToasterToast }
+  | { type: ActionType["UPDATE_TOAST"]; toast: Partial<ToasterToast> }
+  | { type: ActionType["DISMISS_TOAST"]; toastId?: ToasterToast["id"] }
+  | { type: ActionType["REMOVE_TOAST"]; toastId?: ToasterToast["id"] }
 
 interface State {
   toasts: ToasterToast[]
@@ -58,10 +40,11 @@ interface State {
 
 const toastTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
 
+/**
+ * Gestionnaire de file d'attente pour la suppression automatique
+ */
 const addToRemoveQueue = (toastId: string) => {
-  if (toastTimeouts.has(toastId)) {
-    return
-  }
+  if (toastTimeouts.has(toastId)) return
 
   const timeout = setTimeout(() => {
     toastTimeouts.delete(toastId)
@@ -74,6 +57,9 @@ const addToRemoveQueue = (toastId: string) => {
   toastTimeouts.set(toastId, timeout)
 }
 
+/**
+ * Reducer centralisant la logique de transition d'état des notifications
+ */
 export const reducer = (state: State, action: Action): State => {
   switch (action.type) {
     case "ADD_TOAST":
@@ -92,36 +78,23 @@ export const reducer = (state: State, action: Action): State => {
 
     case "DISMISS_TOAST": {
       const { toastId } = action
-
-      // ! Side effects ! - This could be extracted into a dismissToast() action,
-      // but I'll keep it here for simplicity
       if (toastId) {
         addToRemoveQueue(toastId)
       } else {
-        state.toasts.forEach((toast) => {
-          addToRemoveQueue(toast.id)
-        })
+        state.toasts.forEach((toast) => addToRemoveQueue(toast.id))
       }
 
       return {
         ...state,
         toasts: state.toasts.map((t) =>
           t.id === toastId || toastId === undefined
-            ? {
-                ...t,
-                open: false,
-              }
+            ? { ...t, open: false }
             : t
         ),
       }
     }
     case "REMOVE_TOAST":
-      if (action.toastId === undefined) {
-        return {
-          ...state,
-          toasts: [],
-        }
-      }
+      if (action.toastId === undefined) return { ...state, toasts: [] }
       return {
         ...state,
         toasts: state.toasts.filter((t) => t.id !== action.toastId),
@@ -130,26 +103,26 @@ export const reducer = (state: State, action: Action): State => {
 }
 
 const listeners: Array<(state: State) => void> = []
-
 let memoryState: State = { toasts: [] }
 
+/**
+ * Dispatcher global permettant de déclencher des toasts hors contexte React
+ */
 function dispatch(action: Action) {
   memoryState = reducer(memoryState, action)
-  listeners.forEach((listener) => {
-    listener(memoryState)
-  })
+  listeners.forEach((listener) => listener(memoryState))
 }
 
 type Toast = Omit<ToasterToast, "id">
 
+/**
+ * Fonction impérative pour créer une notification
+ */
 function toast({ ...props }: Toast) {
   const id = genId()
 
   const update = (props: ToasterToast) =>
-    dispatch({
-      type: "UPDATE_TOAST",
-      toast: { ...props, id },
-    })
+    dispatch({ type: "UPDATE_TOAST", toast: { ...props, id } })
   const dismiss = () => dispatch({ type: "DISMISS_TOAST", toastId: id })
 
   dispatch({
@@ -158,19 +131,16 @@ function toast({ ...props }: Toast) {
       ...props,
       id,
       open: true,
-      onOpenChange: (open) => {
-        if (!open) dismiss()
-      },
+      onOpenChange: (open) => { if (!open) dismiss() },
     },
   })
 
-  return {
-    id: id,
-    dismiss,
-    update,
-  }
+  return { id, dismiss, update }
 }
 
+/**
+ * Hook personnalisé pour consommer l'état des toasts dans les composants
+ */
 function useToast() {
   const [state, setState] = React.useState<State>(memoryState)
 
@@ -178,9 +148,7 @@ function useToast() {
     listeners.push(setState)
     return () => {
       const index = listeners.indexOf(setState)
-      if (index > -1) {
-        listeners.splice(index, 1)
-      }
+      if (index > -1) listeners.splice(index, 1)
     }
   }, [state])
 

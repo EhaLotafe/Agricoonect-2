@@ -1,4 +1,3 @@
-// shared/schema.ts
 import {
   pgTable,
   text,
@@ -13,12 +12,11 @@ import {
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// 1. Définition des Rôles (RBAC)
+// 1. Définition des Rôles pour le RBAC
 export const userTypeEnum = pgEnum("user_type", ["farmer", "buyer", "admin"]);
 
 // ========== TABLES ==========
 
-// shared/schema.ts (Partie Users)
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: varchar("username", { length: 100 }).notNull().unique(),
@@ -29,10 +27,25 @@ export const users = pgTable("users", {
   phone: varchar("phone", { length: 20 }),
   userType: userTypeEnum("user_type").default("buyer").notNull(),
   location: varchar("location", { length: 255 }),
-  profileImage: text("profile_image"), // ✅ RE-AJOUTE CETTE LIGNE
+  profileImage: text("profile_image"),
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+/**
+ * ✅ TABLE SONDAGES (Cœur Marketing du mémoire)
+ * Permet de collecter les intentions d'achat avant l'affichage du catalogue
+ */
+export const surveys = pgTable("surveys", {
+  id: serial("id").primaryKey(),
+  buyerId: integer("buyer_id").notNull().references(() => users.id),
+  productSought: varchar("product_sought", { length: 100 }).notNull(), // Quel produit recherchez-vous ?
+  buyingPeriod: varchar("buying_period", { length: 100 }).notNull(),   // Pour quand ?
+  quantity: integer("quantity").notNull(),                            // Quelle quantité ?
+  targetPrice: decimal("target_price", { precision: 10, scale: 2 }).notNull(), // Quel prix ?
+  preferences: text("preferences"),                                   // Préférences (Bio, Local, etc.)
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const products = pgTable("products", {
@@ -46,7 +59,7 @@ export const products = pgTable("products", {
   quantity: integer("quantity").notNull(),
   availableQuantity: integer("available_quantity").notNull(),
   harvestDate: timestamp("harvest_date"), 
-  commune: varchar("commune", { length: 100 }), 
+  commune: varchar("commune", { length: 100 }).notNull(), 
   location: varchar("location", { length: 255 }).notNull(), 
   province: varchar("province", { length: 100 }).default("Haut-Katanga").notNull(),
   images: text("images").array(),
@@ -64,7 +77,7 @@ export const orders = pgTable("orders", {
   quantity: integer("quantity").notNull(),
   totalPrice: decimal("total_price", { precision: 10, scale: 2 }).notNull(),
   status: varchar("status", { length: 50 }).notNull().default("pending"),
-  deliveryAddress: text("delivery_address"),
+  deliveryAddress: text("delivery_address"), 
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -91,68 +104,31 @@ export const contacts = pgTable("contacts", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// ========== INSERT SCHEMAS (Zod) ==========
+// ========== SCHÉMAS D'INSERTION (ZOD) ==========
 
-export const insertUserSchema = createInsertSchema(users).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
+export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertSurveySchema = createInsertSchema(surveys).omit({ id: true, createdAt: true });
+export const insertProductSchema = createInsertSchema(products, { harvestDate: z.coerce.date() }).omit({ id: true, createdAt: true, updatedAt: true, isApproved: true });
+export const insertOrderSchema = createInsertSchema(orders).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertReviewSchema = createInsertSchema(reviews).omit({ id: true, createdAt: true });
+export const insertContactSchema = createInsertSchema(contacts).omit({ id: true, createdAt: true });
 
-export const insertProductSchema = createInsertSchema(products, {
-  // ✅ On force Zod à transformer le texte reçu en objet Date
-  harvestDate: z.coerce.date(), 
-  price: z.string(), // On accepte le prix en string pour la précision décimale
-}).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-  isApproved: true, 
-});
+// ========== UPDATE SCHEMAS (ZOD) ==========
 
-export const insertOrderSchema = createInsertSchema(orders).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
+export const updateProductSchema = insertProductSchema.partial();
+export const updateOrderSchema = insertOrderSchema.partial();
+export const updateSurveySchema = insertSurveySchema.partial();
 
-export const insertReviewSchema = createInsertSchema(reviews).omit({
-  id: true,
-  createdAt: true,
-});
-
-export const insertContactSchema = createInsertSchema(contacts).omit({
-  id: true,
-  createdAt: true,
-});
-
-// ========== UPDATE SCHEMAS (Zod) ==========
-// Note : On ne ré-omet que les champs qui n'ont pas été déjà enlevés dans les insert schemas
-
-export const updateProductSchema = insertProductSchema.partial().omit({
-  farmerId: true,
-});
-
-export const updateOrderSchema = insertOrderSchema.partial().omit({
-  buyerId: true,
-  productId: true,
-  farmerId: true,
-  totalPrice: true,
-});
-
-export const updateContactSchema = insertContactSchema.partial().omit({
-  buyerId: true,
-  productId: true,
-  farmerId: true,
-});
-
-// ========== TYPES EXPORTÉS ==========
+// ========== TYPES EXPORTÉS (Indispensable pour Storage) ==========
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 
 export type Product = typeof products.$inferSelect;
 export type InsertProduct = z.infer<typeof insertProductSchema>;
+
+export type Survey = typeof surveys.$inferSelect;
+export type InsertSurvey = z.infer<typeof insertSurveySchema>;
 
 export type Order = typeof orders.$inferSelect;
 export type InsertOrder = z.infer<typeof insertOrderSchema>;

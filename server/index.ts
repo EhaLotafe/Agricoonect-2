@@ -9,34 +9,36 @@ import fs from "fs";
 import cors from "cors";
 
 const app = express();
-// ✅ Autorise ton futur site Vercel à appeler ton API
+
+/**
+ * 🛡️ SÉCURISATION DES ÉCHANGES (CORS)
+ * Justification TFC : Autorise le Frontend (Vercel) à communiquer avec l'API 
+ * de manière sécurisée, protégeant ainsi l'intégrité des sondages.
+ */
 app.use(cors({
-  origin: "*", // Pour la démo, on autorise tout. On pourra restreindre plus tard.
+  origin: process.env.NODE_ENV === "production" ? ["https://ton-site-vercel.app"] : true,
   credentials: true
 }));
 
-// 1. Configuration des parsers (Toujours en premier)
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
 /**
- * ⚡ GESTION DES FICHIERS (UPLOADS)
- * Argument TFC : Gestion de la persistance locale des médias
+ * ⚡ GESTION AUTOMATISÉE DU STOCKAGE MÉDIA
+ * Le SI s'assure de l'existence des répertoires physiques au démarrage.
  */
 const UPLOADS_DIR = path.join(process.cwd(), "public", "uploads");
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  log("Création du répertoire des médias agricole", "system");
 }
 
-// Servir les images pour le Frontend (URL : /uploads/nom-image.jpg)
 app.use("/uploads", express.static(UPLOADS_DIR));
-
-// 🚀 ROUTE API UPLOAD (URL : /api/uploads)
-// On la place AVANT les logs et les routes générales pour éviter les interférences
 app.use("/api/uploads", uploadsRouter);
 
 /**
- * 📝 MIDDLEWARE DE LOGS (DEBUGGING)
+ * 📝 MIDDLEWARE D'AUDIT DES REQUÊTES
+ * Permet de monitorer le flux d'informations marketing en temps réel.
  */
 app.use((req, res, next) => {
   const start = Date.now();
@@ -65,20 +67,22 @@ app.use((req, res, next) => {
 
 (async () => {
   try {
-    // 2. Enregistre les routes API métier (Products, Orders, etc.)
+    /**
+     * 🚀 INITIALISATION DU MOTEUR D'ANALYSE ET DES ROUTES
+     * Convergeance des branches fonctionnelle et technique du cycle 2TUP.
+     */
     const server = await registerRoutes(app);
 
-    // 3. Gestion globale des erreurs
+    // Middleware global de capture d'exceptions (Sécurité du SI)
     app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
       const status = err.status || err.statusCode || 500;
-      const message = err.message || "Internal Server Error";
+      const message = err.message || "Erreur Interne du Système";
       if (!res.headersSent) {
         res.status(status).json({ message });
       }
-      console.error("❌ ERREUR SERVEUR:", err);
+      console.error("❌ CRASH SERVEUR:", err);
     });
 
-    // 4. Configuration de l'environnement (Vite ou Statique)
     if (app.get("env") === "development") {
       await setupVite(app, server);
     } else {
@@ -87,11 +91,12 @@ app.use((req, res, next) => {
 
     const PORT = process.env.PORT || 5000;
     server.listen(Number(PORT), "0.0.0.0", () => {
-      log(`✅ Agri-Connect en ligne sur le port ${PORT}`);
+      log(`✅ Moteur Agri-Connect opérationnel sur le port ${PORT}`);
+      log(`📍 Environnement : ${app.get("env")}`);
     });
 
   } catch (error) {
-    console.error("❌ Échec démarrage :", error);
+    console.error("❌ ÉCHEC DU DÉMARRAGE DU SYSTÈME :", error);
     process.exit(1);
   }
 })();

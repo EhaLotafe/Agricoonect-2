@@ -3,8 +3,11 @@ import { Sprout, Facebook, Mail, Phone, Twitter, MapPin, MessageSquare, Globe, W
 import { Link } from "wouter";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 
+/**
+ * Composant Footer : Structure de navigation globale et branding
+ * Utilise CSS Grid pour la responsivité (1 col mobile, 4 cols desktop)
+ */
 export default function Footer() {
   const currentYear = new Date().getFullYear();
 
@@ -12,21 +15,20 @@ export default function Footer() {
     <footer className="bg-slate-50 dark:bg-slate-950 text-foreground pt-16 pb-8 border-t-4 border-primary transition-colors duration-300">
       <div className="container mx-auto px-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
         
-        {/* Colonne 1 : Vision & Innovation (Le cœur du mémoire) */}
+        {/* Section Identity & Vision */}
         <div className="space-y-5">
           <div className="flex items-center space-x-3">
             <div className="w-12 h-12 bg-primary rounded-2xl flex items-center justify-center shadow-lg transform -rotate-3">
               <Sprout className="text-white" size={28} />
             </div>
             <div>
-              <h4 className="text-2xl font-black tracking-tighter">Agri-Connect</h4>
+              <h4 className="text-2xl font-black tracking-tighter uppercase">Agri-Connect</h4>
               <p className="text-[10px] uppercase tracking-[0.2em] text-primary font-bold">Haut-Katanga • RDC</p>
             </div>
           </div>
           <p className="text-muted-foreground text-sm leading-relaxed">
             Pionnier du <span className="text-foreground font-bold">Circuit Court Digital</span> à Lubumbashi. 
-            Nous désenclavons les producteurs de l'Annexe, Kipushi et Ruashi grâce à une technologie 
-            <span className="text-foreground font-bold italic"> Offline-First</span>.
+            Désenclavement des producteurs via technologie <span className="text-foreground font-bold italic">Offline-First</span>.
           </p>
           <div className="flex space-x-3">
             <SocialLink icon={<Facebook size={18} />} />
@@ -35,18 +37,18 @@ export default function Footer() {
           </div>
         </div>
 
-        {/* Colonne 2 : Navigation Marketplace */}
+        {/* Section Navigation Links */}
         <div>
           <h5 className="font-black text-sm uppercase tracking-widest mb-6 text-primary">Marketplace</h5>
           <ul className="space-y-4 text-muted-foreground text-sm">
-            <FooterLink href="/products" label="🛒 Catalogue des récoltes" />
-            <FooterLink href="/register" label="👨‍🌾 Espace Producteurs" />
-            <FooterLink href="/about" label="📖 Notre Mission Sociale" />
-            <FooterLink href="/faq" label="❓ Centre d'aide" />
+            <FooterLink href="/products" label=" Catalogue des récoltes" />
+            <FooterLink href="/register" label=" Espace Producteurs" />
+            <FooterLink href="/about" label=" Notre Mission Sociale" />
+            <FooterLink href="/faq" label=" Centre d'aide" />
           </ul>
         </div>
 
-        {/* Colonne 3 : Accessibilité Rurale (Argument USSD) */}
+        {/* Section Technical Accessibility (USSD/Offline) */}
         <div>
           <h5 className="font-black text-sm uppercase tracking-widest mb-6 text-primary">Accessibilité</h5>
           <ul className="space-y-4 text-muted-foreground text-sm">
@@ -61,17 +63,17 @@ export default function Footer() {
             <li className="flex items-center gap-3">
               <Globe size={18} className="text-primary shrink-0" />
               <div className="bg-primary/10 border border-primary/20 px-3 py-1 rounded-lg">
-                <span className="text-xs font-mono font-bold text-primary tracking-widest">USSD: *123*2025#(A implementer)</span>
+                <span className="text-xs font-mono font-bold text-primary tracking-widest">USSD: *123*2025#</span>
               </div>
             </li>
             <li className="flex items-center gap-3 italic">
-              <WifiOff size={16} className="text-brand-orange" />
-              <span className="text-xs">Compatible zones blanches</span>
+              <WifiOff size={16} className="text-primary" />
+              <span className="text-xs">Optimisé pour zones à faible débit</span>
             </li>
           </ul>
         </div>
 
-        {/* Colonne 4 : Alertes Récoltes (Newsletter) */}
+        {/* Section Subscription & Alerts */}
         <div>
           <h5 className="font-black text-sm uppercase tracking-widest mb-6 text-primary">Alertes Récoltes</h5>
           <p className="text-muted-foreground text-sm mb-4 italic">
@@ -81,7 +83,7 @@ export default function Footer() {
             <Input 
               type="email" 
               placeholder="Votre e-mail..." 
-              className="bg-background border-border focus:ring-primary h-11"
+              className="bg-background border-border h-11"
             />
             <Button className="w-full bg-primary hover:bg-primary/90 text-white font-black h-11 shadow-md">
               S'ABONNER
@@ -90,13 +92,13 @@ export default function Footer() {
         </div>
       </div>
 
-      {/* FOOTER BAS : Mentions Académiques */}
+      {/* Copyright & Branding Bottom Bar */}
       <div className="container mx-auto px-4 border-t border-border mt-16 pt-8 flex flex-col items-center">
         <p className="text-muted-foreground text-[11px] text-center max-w-2xl">
-          &copy; {currentYear} <span className="font-bold text-foreground">Agri-Connect Marketplace</span>. 
-          Développé à Lubumbashi pour la modernisation de l'agriculture locale.
+          &copy; {currentYear} <span className="font-bold text-foreground italic uppercase">Agri-Connect Marketplace</span>. 
+          Ingénierie logicielle pour la modernisation de l'agriculture locale.
         </p>
-        <p className="text-[9px] uppercase tracking-[0.3em] text-primary font-bold mt-4 opacity-70">
+        <p className="text-[9px] uppercase tracking-[0.3em] text-primary font-bold mt-4 opacity-70 text-center">
           "Réduire la fracture numérique au service de la sécurité alimentaire"
         </p>
       </div>
@@ -104,16 +106,20 @@ export default function Footer() {
   );
 }
 
-// --- Petits composants pour éviter la répétition (Performance) ---
-
+/**
+ * Sous-composant SocialLink : Uniformise le design des boutons sociaux
+ */
 function SocialLink({ icon }: { icon: React.ReactNode }) {
   return (
-    <a href="#" className="p-2.5 bg-muted rounded-xl hover:bg-primary hover:text-white transition-all duration-300 shadow-sm">
+    <a href="#" className="p-2.5 bg-muted rounded-xl hover:bg-primary hover:text-white transition-all duration-300">
       {icon}
     </a>
   );
 }
 
+/**
+ * Sous-composant FooterLink : Gère les animations de survol et la navigation interne
+ */
 function FooterLink({ href, label }: { href: string; label: string }) {
   return (
     <li>

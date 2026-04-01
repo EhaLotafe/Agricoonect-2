@@ -9,17 +9,14 @@ import {
   insertOrderSchema,
   insertReviewSchema,
   insertContactSchema,
-  updateProductSchema,
-  updateOrderSchema,
-  updateContactSchema,
+  insertSurveySchema,
 } from "@shared/schema";
 import jwt from "jsonwebtoken";
 import uploadsRouter from "./uploads";
-import z from "zod";
 
 const SECRET_KEY = process.env.JWT_SECRET || "lubum_agri_2025_secret";
 
-// --- MIDDLEWARES ---
+// --- 🛡️ MIDDLEWARES DE SÉCURISATION ---
 
 const verifyToken = (req: Request, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
@@ -47,39 +44,31 @@ const checkRole = (roles: string[]) => {
 };
 
 function errorHandler(err: any, _req: Request, res: Response, _next: NextFunction) {
-  console.error(err);
+  console.error("❌ Erreur Serveur:", err);
   if (err?.name === "ZodError") {
-    return res.status(400).json({ message: "Erreur de validation", issues: err.issues });
+    return res.status(400).json({ message: "Données invalides", issues: err.issues });
   }
   res.status(err.status || 500).json({ message: err.message || "Erreur interne" });
 }
 
 export async function registerRoutes(app: express.Express): Promise<Server> {
   
-  // --- AUTHENTIFICATION ---
-  // server/routes.ts
+  // --- 👤 AUTHENTIFICATION ---
 
-app.post("/api/register", async (req, res, next) => {
-  try {
-    const userData = insertUserSchema.parse(req.body);
-    const existingUser = await storage.getUserByEmail(userData.email);
-    if (existingUser) return res.status(400).json({ message: "Email déjà utilisé" });
+  app.post("/api/register", async (req, res, next) => {
+    try {
+      const userData = insertUserSchema.parse(req.body);
+      const existingUser = await storage.getUserByEmail(userData.email);
+      if (existingUser) return res.status(400).json({ message: "Email déjà utilisé" });
 
-    const hashedPassword = await bcrypt.hash(userData.password, 10);
-    const user = await storage.createUser({ ...userData, password: hashedPassword });
-    
-    // ✅ GÉNÉRATION DU TOKEN DÈS L'INSCRIPTION
-    const token = jwt.sign(
-      { id: user.id, email: user.email, userType: user.userType },
-      SECRET_KEY,
-      { expiresIn: "7d" }
-    );
-
-    const { password: _, ...userWithoutPassword } = user;
-    // On renvoie le pack complet : user + token
-    res.status(201).json({ user: userWithoutPassword, token });
-  } catch (error) { next(error); }
-});
+      const hashedPassword = await bcrypt.hash(userData.password, 10);
+      const user = await storage.createUser({ ...userData, password: hashedPassword });
+      
+      const token = jwt.sign({ id: user.id, email: user.email, userType: user.userType }, SECRET_KEY, { expiresIn: "30d" });
+      const { password: _, ...userResponse } = user;
+      res.status(201).json({ user: userResponse, token });
+    } catch (error) { next(error); }
+  });
 
   app.post("/api/login", async (req, res, next) => {
     try {
@@ -93,202 +82,148 @@ app.post("/api/register", async (req, res, next) => {
       res.json({ token, user: userData });
     } catch (error) { next(error); }
   });
-  // --- PRODUITS ---
+
+  // --- 📊 SONDAGES & MARKET INTELLIGENCE ---
+
+  app.post("/api/surveys", verifyToken, checkRole(['buyer']), async (req, res, next) => {
+    try {
+      const data = insertSurveySchema.parse(req.body);
+      const survey = await storage.createSurvey({ ...data, buyerId: (req as any).user.id });
+      res.status(201).json(survey);
+    } catch (error) { next(error); }
+  });
+
+  app.get("/api/market-trends", verifyToken, checkRole(['farmer', 'admin']), async (_req, res, next) => {
+    try {
+      const trends = await storage.getMarketTrends();
+      res.json(trends);
+    } catch (error) { next(error); }
+  });
+
+  app.get("/api/market-trends/price/:product", async (req, res, next) => {
+    try {
+      const avgPrice = await storage.getAverageTargetPrice(req.params.product);
+      res.json({ product: req.params.product, averageTargetPrice: avgPrice });
+    } catch (error) { next(error); }
+  });
+
+  // --- 🍎 PRODUITS (CORRECTION ERREUR 500) ---
+
   app.get("/api/products", async (req, res, next) => {
     try {
-      const { category, commune, province, search, approved } = req.query;
-      const filters: any = { isApproved: approved !== "false" };
-      if (category) filters.category = category;
-      if (commune) filters.commune = commune;
-      if (province) filters.province = province;
+      const { category, commune, search, approved } = req.query;
+      
+      // ✅ FIX : Conversion explicite pour éviter l'erreur 500 en DB
+      const filters: any = {};
+      if (approved === "true") filters.isApproved = true;
+      else if (approved === "false") filters.isApproved = false;
+      else filters.isApproved = true; // Par défaut on ne montre que les validés
+
+      if (category && category !== "all") filters.category = category;
+      if (commune && commune !== "all") filters.commune = commune;
       if (search) filters.search = search;
+
       const products = await storage.getAllProducts(filters);
       res.json(products);
     } catch (error) { next(error); }
   });
 
-app.post("/api/products", verifyToken, checkRole(['farmer', 'admin']), async (req, res, next) => {
+  app.get("/api/products/:id", async (req, res, next) => {
     try {
-      // 1. On valide les données (Zod va maintenant convertir la date tout seul)
+      const product = await storage.getProductWithFarmer(Number(req.params.id));
+      if (!product) return res.status(404).json({ message: "Produit non trouvé" });
+      res.json(product);
+    } catch (error) { next(error); }
+  });
+
+  app.post("/api/products", verifyToken, checkRole(['farmer', 'admin']), async (req, res, next) => {
+    try {
       const data = insertProductSchema.parse(req.body);
-      
-      // 2. On crée le produit avec l'ID de l'utilisateur connecté
       const product = await storage.createProduct({ 
         ...data, 
         farmerId: (req as any).user.id,
-        availableQuantity: Number(data.quantity) // Sécurité conversion nombre
+        availableQuantity: Number(data.quantity)
       });
-      
       res.status(201).json(product);
-    } catch (error) { 
-      console.error("❌ Erreur de publication:", error);
-      next(error); 
-    }
-});
-app.get("/api/products/:id", async (req, res, next) => {
-  try {
-    const productId = Number(req.params.id);
-    const product = await storage.getProductWithFarmer(productId);
-    
-    if (!product) {
-      return res.status(404).json({ message: "Produit non trouvé en base de données" });
-    }
-    
-    res.json(product);
-  } catch (error) {
-    next(error);
-  }
-});
-
-  // 🔄 Route de Synchronisation (Argument Mémoire)
-  app.post("/api/products/sync", verifyToken, checkRole(['farmer', 'admin']), async (req, res, next) => {
-    try {
-      // On valide un tableau de produits
-      const productsArray = z.array(insertProductSchema.omit({ farmerId: true })).parse(req.body);
-      const created = [];
-      
-      for (const p of productsArray) {
-        const newProd = await storage.createProduct({ 
-          ...p, 
-          farmerId: (req as any).user.id,
-          availableQuantity: Number(p.quantity)
-        });
-        created.push(newProd);
-      }
-      res.status(201).json({ success: true, count: created.length });
-    } catch (error) { next(error); }
-  });
-  app.get("/api/farmer/:farmerId/products", verifyToken, async (req, res, next) => {
-    try {
-      const products = await storage.getProductsByFarmer(Number(req.params.farmerId));
-      res.json(products);
     } catch (error) { next(error); }
   });
 
-  // --- COMMANDES --
-  app.post("/api/orders", verifyToken, async (req, res, next) => {
-      try {
-        // 🛡️ On valide en ignorant le buyerId (car on l'ajoute via le Token)
-        const orderData = insertOrderSchema.omit({ buyerId: true }).parse(req.body);
-        
-        // Vérification du stock
-        const product = await storage.getProduct(orderData.productId);
-        if (!product || product.availableQuantity < orderData.quantity) {
-          return res.status(400).json({ message: "Désolé, le stock est insuffisant." });
-        }
+  // --- 💰 COMMANDES & SUIVI (CORRECTION ERREUR 403) ---
 
-        // Création de la commande avec l'ID de l'acheteur extrait du Token
-        const order = await storage.createOrder({ 
-          ...orderData, 
-          buyerId: (req as any).user.id,
-          status: "pending" // Statut initial par défaut
-        });
-
-        // Mise à jour automatique du stock disponible
-        await storage.updateProduct(product.id, { 
-          availableQuantity: product.availableQuantity - orderData.quantity 
-        });
-
-        res.status(201).json(order);
-      } catch (error) { 
-        console.error("❌ Erreur Commande:", error);
-        next(error); 
+  app.post("/api/orders", verifyToken, checkRole(['buyer']), async (req, res, next) => {
+    try {
+      const orderData = insertOrderSchema.omit({ buyerId: true }).parse(req.body);
+      const product = await storage.getProduct(orderData.productId);
+      if (!product || product.availableQuantity < orderData.quantity) {
+        return res.status(400).json({ message: "Stock insuffisant" });
       }
-    });
+      const order = await storage.createOrder({ ...orderData, buyerId: (req as any).user.id });
+      await storage.updateProduct(product.id, { availableQuantity: product.availableQuantity - orderData.quantity });
+      res.status(201).json(order);
+    } catch (error) { next(error); }
+  });
+
   app.get("/api/buyer/:buyerId/orders", verifyToken, async (req, res, next) => {
     try {
-      const orders = await storage.getOrdersByBuyer(Number(req.params.buyerId));
+      const authenticatedUser = (req as any).user;
+      const requestedId = Number(req.params.buyerId);
+
+      // Log de debug (Regardez votre terminal VS Code/Serveur après avoir cliqué)
+      console.log(`🔐 Tentative d'accès commandes : AuthUser ID ${authenticatedUser.id} vs Requested ID ${requestedId}`);
+
+      // ✅ FIX : On force Number() sur les deux côtés pour éviter le 403 injustifié
+      if (Number(authenticatedUser.id) !== requestedId && authenticatedUser.userType !== 'admin') {
+        return res.status(403).json({ 
+          message: "Accès refusé : Vous ne pouvez consulter que vos propres commandes." 
+        });
+      }
+
+      const orders = await storage.getOrdersByBuyer(requestedId);
       res.json(orders);
-    } catch (error) { next(error); }
+    } catch (error) { 
+      console.error("Erreur orders :", error);
+      next(error); 
+    }
   });
 
-  app.get("/api/farmer/:farmerId/orders", verifyToken, async (req, res, next) => {
+
+
+  app.get("/api/farmer/:farmerId/orders", verifyToken, checkRole(['farmer', 'admin']), async (req, res, next) => {
     try {
-      const orders = await storage.getOrdersByFarmer(Number(req.params.farmerId));
-      res.json(orders);
+      const authenticatedUser = (req as any).user;
+      const requestedId = Number(req.params.farmerId);
+
+      if (authenticatedUser.id !== requestedId && authenticatedUser.userType !== 'admin') {
+        return res.status(403).json({ message: "Accès refusé" });
+      }
+
+      res.json(await storage.getOrdersByFarmer(requestedId)); 
     } catch (error) { next(error); }
   });
 
-  app.patch("/api/orders/:id", verifyToken, async (req, res, next) => {
-    try {
-      const updateData = updateOrderSchema.parse(req.body);
-      const updated = await storage.updateOrder(Number(req.params.id), updateData);
-      res.json(updated);
-    } catch (error) { next(error); }
-  });
-
-  // --- AVIS & CONTACTS ---
-  app.get("/api/products/:productId/reviews", async (req, res, next) => {
-    try {
-      const reviews = await storage.getReviewsByProduct(Number(req.params.productId));
-      res.json(reviews);
-    } catch (error) { next(error); }
-  });
-
-  app.post("/api/reviews", verifyToken, async (req, res, next) => {
-    try {
-      const review = insertReviewSchema.parse(req.body);
-      const created = await storage.createReview({ ...review, buyerId: (req as any).user.id });
-      res.status(201).json(created);
-    } catch (error) { next(error); }
-  });
-
-  app.post("/api/contacts", verifyToken, async (req, res, next) => {
-    try {
-      const contact = insertContactSchema.parse(req.body);
-      const created = await storage.createContact({ ...contact, buyerId: (req as any).user.id });
-      res.status(201).json(created);
-    } catch (error) { next(error); }
-  });
-
-  app.get("/api/farmer/:farmerId/contacts", verifyToken, async (req, res, next) => {
-    try {
-      const contacts = await storage.getContactsByFarmer(Number(req.params.farmerId));
-      res.json(contacts);
-    } catch (error) { next(error); }
-  });
-
-  // --- ADMIN ---
-   // --- 👑 ADMINISTRATION (LES ROUTES DONT TU AS BESOIN) ---
+  // --- 👑 ADMINISTRATION ---
 
   app.get("/api/admin/users", verifyToken, checkRole(['admin']), async (_req, res, next) => {
     try { res.json(await storage.getAllUsers()); } catch (error) { next(error); }
-  });
-
-  app.put("/api/admin/users/:id", verifyToken, checkRole(['admin']), async (req, res, next) => {
-    try { res.json(await storage.updateUser(Number(req.params.id), req.body)); } catch (error) { next(error); }
-  });
-
-  app.get("/api/admin/products", verifyToken, checkRole(['admin']), async (_req, res, next) => {
-    try {
-      // L'admin voit tout le monde (approuvés ou non) pour faire son travail
-      res.json(await storage.getAllProducts({ isApproved: undefined })); 
-    } catch (error) { next(error); }
   });
 
   app.patch("/api/admin/products/:id/approve", verifyToken, checkRole(['admin']), async (req, res, next) => {
     try { res.json(await storage.approveProduct(Number(req.params.id))); } catch (error) { next(error); }
   });
 
-  app.delete("/api/admin/products/:id", verifyToken, checkRole(['admin']), async (req, res, next) => {
-    try { 
-      await storage.deleteProduct(Number(req.params.id));
-      res.json({ message: "Produit supprimé" });
-    } catch (error) { next(error); }
-  });
-
   app.get("/api/stats", async (_req, res, next) => {
     try { res.json(await storage.getStats()); } catch (error) { next(error); }
   });
 
-  // --- DONNÉES STATIQUES ---
-app.get("/api/communes", (_req, res) => {
-  res.json(["Annexe", "Lubumbashi", "Kenya", "Katuba", "Kamalondo", "Kampemba", "Ruashi"]);
-});
+  // --- 📦 RÉFÉRENTIELS ---
 
-app.get("/api/categories", (_req, res) => {
-  res.json(["Maraîchage", "Céréales", "Légumineuses", "Tubercules", "Élevage", "Fruits"]);
-});
+  app.get("/api/communes", (_req, res) => {
+    res.json(["Annexe", "Lubumbashi", "Kenya", "Katuba", "Kamalondo", "Kampemba", "Ruashi"]);
+  });
+
+  app.get("/api/categories", (_req, res) => {
+    res.json(["Maraîchage", "Céréales", "Légumineuses", "Tubercules", "Élevage", "Fruits"]);
+  });
 
   app.use("/api/uploads", uploadsRouter);
   app.use(errorHandler);

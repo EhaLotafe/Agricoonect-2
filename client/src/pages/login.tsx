@@ -1,24 +1,23 @@
+// client/src/pages/login.tsx
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Sprout, Loader2, ArrowLeft, Lock, ShieldCheck, Eye, EyeOff } from "lucide-react";
-import { Link } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/auth-context";
 import { z } from "zod";
-import { cn } from "@/lib/utils";
 
-// Schéma de validation rigoureux pour la sécurité du SI
+// Schéma de validation (Rigueur de la Conception Technique)
 const loginSchema = z.object({
-  email: z.string().email("Veuillez entrer un email valide (ex: nom@mail.com)"),
-  password: z.string().min(1, "Le mot de passe est obligatoire"),
+  email: z.string().email("Format d'email invalide"),
+  password: z.string().min(1, "Mot de passe requis"),
 });
 
 type LoginFormData = z.infer<typeof loginSchema>;
@@ -29,14 +28,17 @@ export default function Login() {
   const [, navigate] = useLocation();
   const [showPassword, setShowPassword] = useState(false);
 
-  // ✅ REDIRECTION AUTOMATIQUE (Si déjà connecté, on protège la route)
+  /**
+   * 🛡️ Protection des routes (Middleware Frontend)
+   * Redirige automatiquement si l'utilisateur possède déjà un jeton valide.
+   */
   useEffect(() => {
     if (isAuthenticated && user) {
       const target = user.userType === "admin" 
         ? "/panel/dashboard" 
         : user.userType === "farmer" 
           ? "/farmer/dashboard" 
-          : "/buyer/dashboard";
+          : "/products";
       navigate(target);
     }
   }, [isAuthenticated, user, navigate]);
@@ -46,6 +48,9 @@ export default function Login() {
     defaultValues: { email: "", password: "" },
   });
 
+  /**
+   * Mutation d'authentification (Sprint 1 : Sécurisation)
+   */
   const loginMutation = useMutation({
     mutationFn: async (data: LoginFormData) => {
       const res = await apiRequest("POST", "/api/login", data);
@@ -53,63 +58,52 @@ export default function Login() {
     },
     onSuccess: (data) => {
       const { token, user } = data;
-      login(user, token); // On connecte l'utilisateur
+      login(user, token); // Stockage persistant du JWT
 
-      toast({
-        title: "Connexion réussie",
-        description: `Bienvenue, ${user.firstName} !`,
-      });
+      toast({ title: "Accès autorisé", description: `Ravi de vous revoir, ${user.firstName} !` });
 
-      // 🚀 REDIRECTION STRATÉGIQUE (Argument UX du mémoire)
-      if (user.userType === "admin") {
-        navigate("/panel/dashboard");
-      } else if (user.userType === "farmer") {
-        navigate("/farmer/dashboard");
-      } else {
-        // L'acheteur arrive directement sur le marché !
-        navigate("/products"); 
-      }
+      // Redirection selon le privilège RBAC
+      if (user.userType === "admin") navigate("/panel/dashboard");
+      else if (user.userType === "farmer") navigate("/farmer/dashboard");
+      else navigate("/products"); 
     },
-    onError: (error: any) => {
+    onError: () => {
       toast({
-        title: "Échec de l'identification",
-        description: "Email ou mot de passe invalide. Veuillez vérifier vos accès.",
+        title: "Échec d'identification",
+        description: "Identifiants incorrects. Accès refusé par le SI.",
         variant: "destructive",
       });
     },
   });
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 transition-colors duration-500">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md animate-in fade-in slide-in-from-bottom-4 duration-700">
+    <div className="min-h-screen bg-background flex flex-col justify-center py-12 px-4 transition-colors duration-500">
+      <div className="sm:mx-auto sm:w-full sm:max-w-md animate-in fade-in slide-in-from-bottom-4">
         
-        {/* Bouton Retour contextuel */}
         <Link href="/">
-          <Button variant="ghost" size="sm" className="mb-6 gap-2 text-muted-foreground hover:text-primary transition-colors rounded-xl">
-            <ArrowLeft size={16} /> Revenir à l'accueil
+          <Button variant="ghost" size="sm" className="mb-6 gap-2 text-muted-foreground hover:text-primary rounded-xl">
+            <ArrowLeft size={16} /> Retour à l'accueil
           </Button>
         </Link>
 
-        {/* Branding & Identité Katangaise */}
         <div className="text-center space-y-3">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-[1.5rem] bg-primary text-white shadow-2xl shadow-primary/20 mb-2 transform -rotate-3 transition-transform hover:rotate-0">
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-primary text-white shadow-2xl transform -rotate-3 hover:rotate-0 transition-transform">
             <Sprout size={40} />
           </div>
-          <h2 className="text-4xl font-black tracking-tighter text-foreground">Agri-Connect</h2>
-          <div className="flex items-center justify-center gap-2 text-primary font-bold text-[10px] uppercase tracking-[0.3em]">
-            <ShieldCheck size={14} /> Accès Sécurisé • RDC
+          <h2 className="text-4xl font-black tracking-tighter uppercase">Agri-Connect</h2>
+          <div className="flex items-center justify-center gap-2 text-primary font-bold text-[10px] uppercase tracking-widest">
+            <ShieldCheck size={14} /> Connexion Sécurisée • RDC
           </div>
         </div>
       </div>
 
       <div className="mt-10 sm:mx-auto sm:w-full sm:max-w-md">
-        <Card className="border-border bg-card shadow-2xl rounded-[2rem] overflow-hidden transition-colors border-2">
+        <Card className="border-2 shadow-2xl rounded-[2.5rem] overflow-hidden">
           <CardHeader className="space-y-1 bg-muted/30 border-b p-8">
-            <CardTitle className="text-2xl font-black tracking-tight">Identification</CardTitle>
-            <CardDescription className="text-muted-foreground font-medium">
-              Connectez-vous pour gérer vos échanges agricoles.
-            </CardDescription>
+            <CardTitle className="text-2xl font-black uppercase tracking-tight">Identification</CardTitle>
+            <CardDescription className="font-medium italic">Accédez à votre espace d'intelligence marketing.</CardDescription>
           </CardHeader>
+          
           <CardContent className="pt-8 px-8 pb-10">
             <Form {...form}>
               <form onSubmit={form.handleSubmit((data) => loginMutation.mutate(data))} className="space-y-6">
@@ -118,13 +112,9 @@ export default function Login() {
                   name="email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="font-bold text-xs uppercase tracking-widest text-muted-foreground">Adresse Email</FormLabel>
+                      <FormLabel className="font-black text-[10px] uppercase tracking-widest opacity-60">Adresse Email</FormLabel>
                       <FormControl>
-                        <Input 
-                          placeholder="votre.nom@mail.cd" 
-                          className="h-12 bg-background border-border focus:ring-primary rounded-xl" 
-                          {...field} 
-                        />
+                        <Input placeholder="votre.nom@mail.cd" className="h-12 bg-muted/20 border-none rounded-xl" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -136,20 +126,19 @@ export default function Login() {
                   name="password"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="font-bold text-xs uppercase tracking-widest text-muted-foreground">Mot de passe</FormLabel>
+                      <FormLabel className="font-black text-[10px] uppercase tracking-widest opacity-60">Mot de passe</FormLabel>
                       <FormControl>
                         <div className="relative">
                           <Input 
                             type={showPassword ? "text" : "password"}
-                            placeholder="••••••••••••" 
-                            className="h-12 bg-background border-border focus:ring-primary pr-12 rounded-xl" 
+                            placeholder="••••••••" 
+                            className="h-12 bg-muted/20 border-none pr-12 rounded-xl" 
                             {...field} 
                           />
                           <button
                             type="button"
                             onClick={() => setShowPassword(!showPassword)}
                             className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
-                            title={showPassword ? "Cacher" : "Afficher"}
                           >
                             {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                           </button>
@@ -162,44 +151,32 @@ export default function Login() {
 
                 <Button
                   type="submit"
-                  className="w-full h-14 bg-primary hover:bg-primary/90 text-white text-lg font-black shadow-xl shadow-primary/10 transition-all active:scale-95 rounded-2xl"
+                  className="w-full h-14 bg-primary hover:bg-primary/90 text-white text-lg font-black shadow-xl rounded-2xl transition-all active:scale-95"
                   disabled={loginMutation.isPending}
                 >
                   {loginMutation.isPending ? (
-                    <>
-                      <Loader2 className="mr-2 h-5 w-5 animate-spin" /> 
-                      VÉRIFICATION...
-                    </>
+                    <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> VÉRIFICATION...</>
                   ) : (
-                    <>
-                      <Lock className="mr-2 h-4 w-4" /> 
-                      SE CONNECTER
-                    </>
+                    <><Lock className="mr-2 h-4 w-4" /> SE CONNECTER</>
                   )}
                 </Button>
               </form>
             </Form>
 
-            {/* Lien d'inscription vers la couleur Accent (Orange) */}
-            <div className="mt-10 pt-6 border-t border-border text-center">
-              <p className="text-sm text-muted-foreground font-medium">
-                Nouveau sur Agri-Connect ?
-              </p>
+            <div className="mt-10 pt-6 border-t text-center">
+              <p className="text-sm text-muted-foreground font-medium">Nouveau sur la plateforme ?</p>
               <Link href="/register">
-                <Button variant="link" className="mt-2 text-brand-orange font-black uppercase tracking-widest text-[10px] hover:no-underline hover:opacity-80">
-                  Créer mon compte de producteur ou d'acheteur
+                <Button variant="link" className="mt-2 text-orange-600 font-black uppercase tracking-widest text-[10px] hover:no-underline">
+                  Créer un compte de producteur ou d'acheteur
                 </Button>
               </Link>
             </div>
           </CardContent>
         </Card>
 
-        {/* Mentions finales */}
-        <div className="mt-8 flex flex-col items-center gap-2 opacity-40 hover:opacity-100 transition-opacity">
-           <p className="text-[9px] text-muted-foreground uppercase tracking-[0.4em] font-black text-center">
-            Système de Marketing Agricole RDC
-          </p>
-        </div>
+        <p className="mt-8 text-[9px] text-muted-foreground uppercase tracking-[0.4em] font-black text-center opacity-30">
+          Système de Marketing Agricole • Lubumbashi
+        </p>
       </div>
     </div>
   );

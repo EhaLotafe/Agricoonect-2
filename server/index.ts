@@ -16,7 +16,7 @@ const app = express();
  * de manière sécurisée, protégeant ainsi l'intégrité des sondages.
  */
 app.use(cors({
-  origin: process.env.NODE_ENV === "production" ? ["https://ton-site-vercel.app"] : true,
+  origin: process.env.NODE_ENV === "production" ? ["https://agriconnect-sandy-nine.vercel.app"] : true,
   credentials: true
 }));
 

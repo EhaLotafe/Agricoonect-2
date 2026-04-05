@@ -1,15 +1,20 @@
 // client/src/pages/register.tsx
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Sprout, Tractor, ShoppingBasket, Loader2, UserPlus, Eye, EyeOff, MapPin, ShieldCheck } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { 
+  Sprout, Tractor, ShoppingBasket, Loader2, UserPlus, 
+  Eye, EyeOff, MapPin, ShieldCheck, ArrowLeft, CheckCircle, 
+  Leaf, Zap 
+} from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { insertUserSchema } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
@@ -18,7 +23,6 @@ import { useAuth } from "@/context/auth-context";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
 
-// Bassins de production et consommation identifiés dans le cadre de référence
 const COMMUNE_LIST = ["Annexe", "Lubumbashi", "Kenya", "Katuba", "Kamalondo", "Kampemba", "Ruashi", "Autre"];
 
 const registerSchema = insertUserSchema.omit({ username: true }).extend({
@@ -34,9 +38,16 @@ type RegisterFormData = z.infer<typeof registerSchema>;
 
 export default function Register() {
   const [, navigate] = useLocation();
-  const { login } = useAuth();
+  const { login, isAuthenticated, user: authUser } = useAuth();
   const { toast } = useToast();
   const [showPass, setShowPass] = useState(false);
+
+  useEffect(() => {
+    if (isAuthenticated && authUser) {
+      const target = authUser.userType === "admin" ? "/panel/dashboard" : authUser.userType === "farmer" ? "/farmer/dashboard" : "/products";
+      navigate(target);
+    }
+  }, [isAuthenticated, authUser, navigate]);
 
   const form = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
@@ -50,163 +61,157 @@ export default function Register() {
   const userType = form.watch('userType');
   const selectedCommune = form.watch('commune');
 
-  /**
-   * Mutation d'inscription avec logique métier automatisée
-   */
   const registerMutation = useMutation({
     mutationFn: async (data: RegisterFormData) => {
-      // 🤖 Génération automatisée du username pour réduire la charge cognitive
       const autoUsername = `${data.firstName.toLowerCase()}.${data.lastName.toLowerCase()}${Math.floor(Math.random() * 1000)}`.replace(/\s/g, '');
-      
       const finalLocation = data.commune === "Autre" ? data.customCommune : data.commune;
       const { confirmPassword, customCommune, commune, ...userData } = data;
       
-      const payload = { 
-        ...userData, 
-        username: autoUsername, 
-        location: finalLocation 
-      };
-
+      const payload = { ...userData, username: autoUsername, location: finalLocation };
       const res = await apiRequest('POST', '/api/register', payload);
       return res.json();
     },
-
     onSuccess: (data) => {
-      const { token, user } = data;
-      login(user, token); // Persistance de la session JWT
-
-      toast({ title: "Compte créé avec succès", description: `Bienvenue, ${user.firstName} !` });
-
-      // 🚀 Redirection contextuelle selon le rôle (RBAC)
-      if (user.userType === "admin") navigate("/panel/dashboard");
-      else if (user.userType === "farmer") navigate("/farmer/dashboard");
-      else navigate("/products"); // Redirection immédiate vers le marché pour l'acheteur
+      login(data.user, data.token);
+      toast({ title: "Compte créé !", description: "Bienvenue dans la communauté." });
     },
     onError: (error: any) => {
-      toast({ title: "Échec de l'inscription", description: error.message, variant: "destructive" });
+      toast({ title: "Erreur", description: error.message, variant: "destructive" });
     },
   });
 
   return (
-    <div className="min-h-screen bg-background flex flex-col justify-center py-12 px-4 transition-colors duration-300">
-      <div className="max-w-xl mx-auto w-full space-y-8 animate-in fade-in slide-in-from-bottom-6">
+    <div className="min-h-screen flex flex-col md:flex-row bg-background">
+      
+      {/* --- CÔTÉ GAUCHE : BRANDING & VALEURS --- */}
+      <div className="hidden md:flex md:w-1/2 relative overflow-hidden bg-slate-950">
+        <div className="absolute inset-0 bg-gradient-to-tr from-primary/30 via-slate-950 to-emerald-500/20 z-0" />
+        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/pinstriped-suit.png')] opacity-10 z-1" />
         
-        <div className="text-center space-y-3">
+        <div className="relative z-10 w-full flex flex-col p-16">
           <Link href="/">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-primary text-white rounded-2xl shadow-xl hover:rotate-6 transition-transform cursor-pointer">
-              <Sprout size={32} />
+            <div className="flex items-center gap-3 cursor-pointer group w-fit mb-12">
+              <div className="w-12 h-12 bg-primary rounded-2xl flex items-center justify-center text-white shadow-2xl group-hover:rotate-6 transition-transform">
+                <Sprout size={28} />
+              </div>
+              <span className="text-2xl font-black text-white tracking-tighter uppercase">Agri-Connect</span>
             </div>
           </Link>
-          <h1 className="text-3xl font-black uppercase tracking-tighter">Créer mon compte</h1>
-          <div className="flex items-center justify-center gap-2 text-primary font-bold text-[10px] uppercase tracking-widest">
-            <ShieldCheck size={14} /> Accès sécurisé au SI
+
+          <div className="space-y-8">
+            <h1 className="text-6xl font-black text-white leading-[0.99] tracking-tighter uppercase">
+              Cultivons <br/> l'intelligence <br/> <span className="text-primary italic">ensemble.</span>
+            </h1>
+            
+            <div className="space-y-4 max-w-md">
+                <div className="flex gap-4 items-center p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm">
+                    <div className="p-2 bg-primary/20 rounded-lg text-primary"><Leaf size={20}/></div>
+                    <p className="text-sm text-slate-300 font-medium italic">"Valorisez vos récoltes grâce à la traçabilité numérique."</p>
+                </div>
+                <div className="flex gap-4 items-center p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm">
+                    <div className="p-2 bg-orange-500/20 rounded-lg text-orange-400"><Zap size={20}/></div>
+                    <p className="text-sm text-slate-300 font-medium italic">"Accédez aux meilleurs prix du marché de Lubumbashi."</p>
+                </div>
+            </div>
           </div>
         </div>
+      </div>
 
-        <Card className="border-2 shadow-2xl rounded-[2.5rem] overflow-hidden">
-          <CardHeader className="bg-muted/30 border-b pb-6 text-center">
-            <CardTitle className="text-sm uppercase tracking-widest font-black text-primary">Identification de l'acteur</CardTitle>
-          </CardHeader>
-          
-          <CardContent className="pt-8 px-8 pb-8">
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(data => registerMutation.mutate(data))} className="space-y-6">
-                
-                {/* Sélection du Rôle (Buyer/Farmer) */}
-                <FormField
-                  control={form.control}
-                  name="userType"
-                  render={({ field }) => (
-                    <Tabs value={field.value} onValueChange={field.onChange} className="w-full">
-                      <TabsList className="grid w-full grid-cols-2 h-14 bg-muted p-1 rounded-xl">
-                        <TabsTrigger value="farmer" className="rounded-lg font-black gap-2 text-xs uppercase">
-                          <Tractor size={16} /> Agriculteur
-                        </TabsTrigger>
-                        <TabsTrigger value="buyer" className="rounded-lg font-black gap-2 text-xs uppercase">
-                          <ShoppingBasket size={16} /> Acheteur
-                        </TabsTrigger>
-                      </TabsList>
-                    </Tabs>
-                  )}
-                />
+      {/* --- CÔTÉ DROIT : FORMULAIRE --- */}
+      <div className="flex-1 flex flex-col justify-center items-center p-6 md:p-12 lg:p-16 overflow-y-auto">
+        <Link href="/login" className="absolute top-8 right-8 hidden md:block">
+          <Button variant="ghost" className="font-bold text-muted-foreground hover:text-primary">
+            Déjà membre ? <span className="text-primary ml-1 font-black underline">Se connecter</span>
+          </Button>
+        </Link>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField control={form.control} name="firstName" render={({ field }) => (
-                    <FormItem><FormLabel className="text-[10px] uppercase font-black opacity-60">Prénom *</FormLabel>
-                    <FormControl><Input placeholder="Prénom" className="h-11 bg-muted/20 border-none rounded-xl" {...field} /></FormControl></FormItem>
-                  )} />
-                  <FormField control={form.control} name="lastName" render={({ field }) => (
-                    <FormItem><FormLabel className="text-[10px] uppercase font-black opacity-60">Nom *</FormLabel>
-                    <FormControl><Input placeholder="Nom" className="h-11 bg-muted/20 border-none rounded-xl" {...field} /></FormControl></FormItem>
-                  )} />
-                </div>
+        <div className="w-full max-w-lg space-y-8 py-10 animate-in fade-in slide-in-from-bottom-4">
+          <div className="text-center md:text-left space-y-2">
+            <h2 className="text-4xl font-black tracking-tighter text-foreground uppercase">Créer un compte</h2>
+            <p className="text-muted-foreground font-medium italic">Identifiez-vous pour accéder au marché de Lubumbashi.</p>
+          </div>
 
-                <FormField control={form.control} name="email" render={({ field }) => (
-                  <FormItem><FormLabel className="text-[10px] uppercase font-black opacity-60">Email professionnel *</FormLabel>
-                  <FormControl><Input type="email" placeholder="votre@email.cd" className="h-11 bg-muted/20 border-none rounded-xl" {...field} /></FormControl></FormItem>
-                )} />
+          <Card className="border-2 shadow-2xl rounded-[2.5rem] overflow-hidden bg-card/50 backdrop-blur-sm border-border/50">
+            <CardContent className="p-8">
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(data => registerMutation.mutate(data))} className="space-y-6">
+                  
+                  <FormField
+                    control={form.control}
+                    name="userType"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-[10px] font-black uppercase tracking-widest opacity-60 ml-1">Type d'acteur</FormLabel>
+                        <Tabs value={field.value} onValueChange={field.onChange} className="w-full">
+                          <TabsList className="grid w-full grid-cols-2 h-14 bg-muted/50 p-1 rounded-2xl border">
+                            <TabsTrigger value="farmer" className="rounded-xl font-black gap-2 text-xs uppercase data-[state=active]:bg-primary data-[state=active]:text-white">
+                              <Tractor size={16} /> Agriculteur
+                            </TabsTrigger>
+                            <TabsTrigger value="buyer" className="rounded-xl font-black gap-2 text-xs uppercase data-[state=active]:bg-orange-600 data-[state=active]:text-white">
+                              <ShoppingBasket size={16} /> Acheteur
+                            </TabsTrigger>
+                          </TabsList>
+                        </Tabs>
+                      </FormItem>
+                    )}
+                  />
 
-                {/* Localisation spécifique à Lubumbashi */}
-                <div className="space-y-4 p-5 bg-primary/5 rounded-[1.5rem] border-2 border-dashed border-primary/20">
-                  <FormField control={form.control} name="commune" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="flex items-center gap-2 font-black text-[10px] uppercase tracking-widest text-primary">
-                        <MapPin size={14}/> {userType === 'farmer' ? "Zone de production" : "Localisation"}
-                      </FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl><SelectTrigger className="bg-background border-none h-11 rounded-xl shadow-sm"><SelectValue placeholder="Choisir une zone..." /></SelectTrigger></FormControl>
-                        <SelectContent className="rounded-xl border-none shadow-xl">
-                          {COMMUNE_LIST.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </FormItem>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <FormField name="firstName" render={({ field }) => (
+                      <FormItem><FormLabel className="text-[10px] font-black uppercase opacity-60 ml-1">Prénom</FormLabel>
+                      <FormControl><Input placeholder="Prénom" className="h-12 bg-muted/30 border-none rounded-xl font-bold" {...field} /></FormControl></FormItem>
+                    )} />
+                    <FormField name="lastName" render={({ field }) => (
+                      <FormItem><FormLabel className="text-[10px] font-black uppercase opacity-60 ml-1">Nom</FormLabel>
+                      <FormControl><Input placeholder="Nom" className="h-12 bg-muted/30 border-none rounded-xl font-bold" {...field} /></FormControl></FormItem>
+                    )} />
+                  </div>
+
+                  <FormField name="email" render={({ field }) => (
+                    <FormItem><FormLabel className="text-[10px] font-black uppercase opacity-60 ml-1">Adresse Email</FormLabel>
+                    <FormControl><Input type="email" placeholder="votre@email.cd" className="h-12 bg-muted/30 border-none rounded-xl font-bold" {...field} /></FormControl></FormItem>
                   )} />
 
-                  {selectedCommune === "Autre" && (
-                    <FormField control={form.control} name="customCommune" render={({ field }) => (
-                      <FormItem className="animate-in slide-in-from-top-2">
-                        <FormControl><Input placeholder="Précisez votre village ou quartier..." className="h-11 bg-background border-primary/30 rounded-xl" {...field} /></FormControl>
+                  <div className="p-5 rounded-2xl bg-primary/5 border border-primary/10 space-y-4">
+                    <FormField name="commune" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="flex items-center gap-2 text-[10px] font-black uppercase text-primary tracking-widest">
+                           <MapPin size={14}/> {userType === 'farmer' ? "Bassin de production" : "Localisation"}
+                        </FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl><SelectTrigger className="h-12 bg-background border-none rounded-xl shadow-sm"><SelectValue placeholder="Choisir une zone..." /></SelectTrigger></FormControl>
+                          <SelectContent className="rounded-xl border-none shadow-2xl">
+                            {COMMUNE_LIST.map(c => <SelectItem key={c} value={c} className="font-bold">{c}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
                       </FormItem>
                     )} />
-                  )}
-                </div>
+                  </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField control={form.control} name="password" render={({ field }) => (
-                    <FormItem><FormLabel className="text-[10px] uppercase font-black opacity-60">Mot de passe</FormLabel>
-                    <FormControl>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <FormField name="password" render={({ field }) => (
+                      <FormItem><FormLabel className="text-[10px] font-black uppercase opacity-60 ml-1">Mot de passe</FormLabel>
                       <div className="relative">
-                        <Input type={showPass ? "text" : "password"} className="h-11 bg-muted/20 border-none pr-10 rounded-xl" {...field} />
-                        <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-3 top-3 text-muted-foreground transition-colors">
+                        <Input type={showPass ? "text" : "password"} className="h-12 bg-muted/30 border-none rounded-xl pr-10" {...field} />
+                        <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
                           {showPass ? <EyeOff size={18}/> : <Eye size={18}/>}
                         </button>
-                      </div>
-                    </FormControl></FormItem>
-                  )} />
-                  <FormField control={form.control} name="confirmPassword" render={({ field }) => (
-                    <FormItem><FormLabel className="text-[10px] uppercase font-black opacity-60">Confirmation</FormLabel>
-                    <FormControl><Input type="password" placeholder="••••••••" className="h-11 bg-muted/20 border-none rounded-xl" {...field} /></FormControl></FormItem>
-                  )} />
-                </div>
+                      </div></FormItem>
+                    )} />
+                    <FormField name="confirmPassword" render={({ field }) => (
+                      <FormItem><FormLabel className="text-[10px] font-black uppercase opacity-60 ml-1">Confirmation</FormLabel>
+                      <Input type="password" placeholder="••••••••" className="h-12 bg-muted/30 border-none rounded-xl" {...field} /></FormItem>
+                    )} />
+                  </div>
 
-                <Button 
-                  type="submit" 
-                  className={cn(
-                    "w-full h-16 text-lg font-black shadow-xl transition-all active:scale-95 rounded-2xl uppercase tracking-widest",
-                    userType === 'farmer' ? "bg-primary" : "bg-orange-600 text-white"
-                  )}
-                  disabled={registerMutation.isPending}
-                >
-                  {registerMutation.isPending ? <Loader2 className="animate-spin" /> : <><UserPlus className="mr-2" size={20} /> Créer mon compte</>}
-                </Button>
-              </form>
-            </Form>
-
-            <div className="mt-8 text-center border-t pt-6">
-              <p className="text-muted-foreground text-sm font-medium">Déjà membre ? <Link href="/login" className="text-primary font-bold hover:underline ml-1">Connectez-vous</Link></p>
-            </div>
-          </CardContent>
-        </Card>
+                  <Button type="submit" className={cn("w-full h-16 text-lg font-black shadow-xl rounded-2xl transition-all active:scale-95 uppercase tracking-widest", userType === 'farmer' ? "bg-primary" : "bg-orange-600 text-white")} disabled={registerMutation.isPending}>
+                    {registerMutation.isPending ? <Loader2 className="animate-spin" /> : <><UserPlus className="mr-2" /> S'inscrire</>}
+                  </Button>
+                </form>
+              </Form>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

@@ -122,7 +122,7 @@ export default function ProductDetail() {
           <div className="space-y-3">
             <div className="flex items-center gap-3">
               <Badge variant="secondary" className="uppercase text-[10px] font-black tracking-widest">{product.category}</Badge>
-              {product.isApproved && <Badge className="bg-primary/10 text-primary border-none text-[10px] font-black uppercase flex gap-1"><ShieldCheck size={12}/> Certifié SI</Badge>}
+              {product.isApproved && <Badge className="bg-primary/10 text-primary border-none text-[10px] font-black uppercase flex gap-1"><ShieldCheck size={12}/> Certifié </Badge>}
             </div>
             <h1 className="text-5xl font-black text-foreground tracking-tighter uppercase leading-none">{product.name}</h1>
             <p className="flex items-center gap-2 text-muted-foreground font-medium italic"><MapPin size={18} className="text-primary" /> {product.location}, Lubumbashi RDC</p>

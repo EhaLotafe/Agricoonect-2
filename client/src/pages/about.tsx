@@ -13,9 +13,6 @@ export default function About() {
       
       {/* SECTION 1 : VISION & POSITIONNEMENT GÉOGRAPHIQUE */}
       <div className="text-center max-w-3xl mx-auto space-y-6">
-        <Badge variant="outline" className="text-primary border-primary/30 px-4 py-1 uppercase tracking-tighter font-black">
-          Innovation Numérique Rurale
-        </Badge>
         <h1 className="text-5xl font-black text-slate-900 dark:text-white leading-tight">
           L'Agriculture connectée au <span className="text-primary italic">Haut-Katanga</span>.
         </h1>

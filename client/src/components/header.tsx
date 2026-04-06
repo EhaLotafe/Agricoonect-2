@@ -4,7 +4,7 @@ import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useForm } from "react-hook-form";
 import { 
-  Sprout, Menu, User, ShoppingBasket, Tractor, 
+  Sprout, User, ShoppingBasket, Tractor, 
   Settings, Moon, Sun, Home, Package, LogOut, 
   Mail, MapPin, Phone, Calendar, UserCircle, Edit3, Save, X, WifiOff, Loader2,
   ChevronDown, Info 
@@ -45,6 +45,7 @@ const translateRole = (role?: string) => {
 };
 
 export default function Header() {
+  // 1. DÉCLARATION DE TOUS LES HOOKS (DOIVENT ÊTRE EN HAUT)
   const { user, logout, isAuthenticated, login } = useAuth();
   const [location] = useLocation();
   const { theme, toggleTheme } = useTheme();
@@ -53,13 +54,6 @@ export default function Header() {
   
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-
-  // 🛡️ MASQUAGE DU HEADER (Innovation UX)
-  const hideHeaderRoutes = ["/login", "/register"];
-  if (hideHeaderRoutes.includes(location)) return null;
-
-  const role = isAuthenticated && user ? user.userType : 'public';
-  const navItems = NAV_CONFIG[role as keyof typeof NAV_CONFIG] || NAV_CONFIG.public;
 
   const form = useForm({
     defaultValues: {
@@ -84,31 +78,33 @@ export default function Header() {
     }
   });
 
+  // 2. LOGIQUE DE MASQUAGE (PLACÉE APRÈS LES HOOKS)
+  const hideHeaderRoutes = ["/login", "/register"];
+  if (hideHeaderRoutes.includes(location)) return null;
+
+  // 3. LOGIQUE DE RENDU
+  const role = isAuthenticated && user ? user.userType : 'public';
+  const navItems = NAV_CONFIG[role as keyof typeof NAV_CONFIG] || NAV_CONFIG.public;
+
   return (
     <>
       <header className="bg-background/80 backdrop-blur-xl sticky top-0 z-50 w-full border-b border-border/50 shadow-sm transition-all duration-300">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           
-          {/* LOGO SECTION */}
           <Link href="/">
             <div className="flex items-center space-x-2 cursor-pointer group">
               <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center text-white shadow-lg transition-transform group-hover:rotate-6">
                 <Sprout size={22} />
               </div>
-              <div className="hidden sm:block leading-none">
+              <div className="hidden sm:block leading-none text-left">
                 <h1 className="text-lg font-black tracking-tighter uppercase text-foreground">Agri-Connect</h1>
                 <p className="text-[8px] uppercase tracking-[0.3em] text-primary font-black">Haut-Katanga • RDC</p>
               </div>
             </div>
           </Link>
 
-          {/* ACTIONS SECTION */}
           <div className="flex items-center space-x-3">
-            {!isOnline && (
-              <Badge variant="destructive" className="hidden md:flex animate-pulse gap-1 px-3 py-1 rounded-full text-[9px] font-black">
-                <WifiOff size={12} /> HORS-LIGNE
-              </Badge>
-            )}
+            {!isOnline && <WifiOff size={18} className="text-destructive animate-pulse mr-2" />}
 
             <Button variant="ghost" size="icon" onClick={toggleTheme} className="rounded-full h-9 w-9 hover:bg-primary/10 transition-colors">
               {theme === "light" ? <Moon size={18} className="text-slate-600" /> : <Sun size={18} className="text-yellow-400" />}
@@ -131,7 +127,7 @@ export default function Header() {
                     <div className="h-10 w-10 rounded-xl bg-primary/20 flex items-center justify-center text-primary font-black">
                       {user?.firstName[0]}
                     </div>
-                    <div className="flex flex-col truncate">
+                    <div className="flex flex-col truncate text-left">
                       <p className="text-xs font-black truncate text-foreground">{user?.firstName} {user?.lastName}</p>
                       <span className="text-[9px] font-bold text-primary uppercase tracking-widest">{translateRole(user?.userType)}</span>
                     </div>
@@ -170,7 +166,7 @@ export default function Header() {
         </div>
       </header>
 
-      {/* 👤 PANNEAU PROFIL (S'ADAPTE AU DESIGN DES PAGES LOGIN) */}
+      {/* Side Panel : Profil */}
       <Sheet open={isProfileOpen} onOpenChange={(val) => { setIsProfileOpen(val); if(!val) setIsEditing(false); }}>
         <SheetContent className="sm:max-w-md bg-card p-0 flex flex-col shadow-2xl border-l-border/50">
           <div className="bg-slate-950 h-32 w-full relative shrink-0">
@@ -188,34 +184,34 @@ export default function Header() {
 
           <div className="mt-14 px-8 flex-1 overflow-y-auto pb-10">
             <div className="flex justify-between items-center mb-8">
-              <div className="space-y-1">
+              <div className="space-y-1 text-left">
                 <h3 className="text-2xl font-black text-foreground tracking-tighter">{user?.firstName} {user?.lastName}</h3>
                 <Badge className="bg-primary/10 text-primary border-none text-[9px] font-black uppercase tracking-widest">
                   {translateRole(user?.userType)}
                 </Badge>
               </div>
-              <Button size="icon" variant="ghost" className="rounded-full text-primary hover:bg-primary/10 transition-all shadow-sm" onClick={() => setIsEditing(!isEditing)}>
+              <Button size="icon" variant="ghost" className="rounded-full text-primary hover:bg-primary/10" onClick={() => setIsEditing(!isEditing)}>
                 {isEditing ? <X size={20} /> : <Edit3 size={20} />}
               </Button>
             </div>
 
             {isEditing ? (
               <Form {...form}>
-                <form onSubmit={form.handleSubmit(data => updateProfileMutation.mutate(data))} className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-300">
+                <form onSubmit={form.handleSubmit(data => updateProfileMutation.mutate(data))} className="space-y-5 text-left">
                   <div className="grid grid-cols-2 gap-4">
-                    <FormField name="firstName" render={({field}) => <FormItem><FormLabel className="text-[10px] uppercase font-black opacity-50 ml-1">Prénom</FormLabel><Input {...field} className="h-12 bg-muted/30 border-none rounded-xl font-medium" /></FormItem>} />
-                    <FormField name="lastName" render={({field}) => <FormItem><FormLabel className="text-[10px] uppercase font-black opacity-50 ml-1">Nom</FormLabel><Input {...field} className="h-12 bg-muted/30 border-none rounded-xl font-medium" /></FormItem>} />
+                    <FormField name="firstName" render={({field}) => <FormItem><FormLabel className="text-[10px] uppercase font-black opacity-50 ml-1">Prénom</FormLabel><Input {...field} className="h-12 bg-muted/30 border-none rounded-xl font-bold" /></FormItem>} />
+                    <FormField name="lastName" render={({field}) => <FormItem><FormLabel className="text-[10px] uppercase font-black opacity-50 ml-1">Nom</FormLabel><Input {...field} className="h-12 bg-muted/30 border-none rounded-xl font-bold" /></FormItem>} />
                   </div>
-                  <FormField name="phone" render={({field}) => <FormItem><FormLabel className="text-[10px] uppercase font-black opacity-50 ml-1">Téléphone</FormLabel><Input {...field} className="h-12 bg-muted/30 border-none rounded-xl font-medium" /></FormItem>} />
-                  <FormField name="location" render={({field}) => <FormItem><FormLabel className="text-[10px] uppercase font-black opacity-50 ml-1">Commune / Zone</FormLabel><Input {...field} className="h-12 bg-muted/30 border-none rounded-xl font-medium" /></FormItem>} />
+                  <FormField name="phone" render={({field}) => <FormItem><FormLabel className="text-[10px] uppercase font-black opacity-50 ml-1">Téléphone</FormLabel><Input {...field} className="h-12 bg-muted/30 border-none rounded-xl font-bold" /></FormItem>} />
+                  <FormField name="location" render={({field}) => <FormItem><FormLabel className="text-[10px] uppercase font-black opacity-50 ml-1">Commune / Zone</FormLabel><Input {...field} className="h-12 bg-muted/30 border-none rounded-xl font-bold" /></FormItem>} />
                   
                   <Button type="submit" className="w-full bg-primary font-black rounded-2xl h-14 shadow-xl shadow-primary/20 mt-4 uppercase tracking-widest text-xs" disabled={updateProfileMutation.isPending}>
-                    {updateProfileMutation.isPending ? <Loader2 className="animate-spin mr-2" /> : <><Save size={18} className="mr-2"/> Enregistrer les modifications</>}
+                    {updateProfileMutation.isPending ? <Loader2 className="animate-spin mr-2" /> : <><Save size={18} className="mr-2"/> Enregistrer</>}
                   </Button>
                 </form>
               </Form>
             ) : (
-              <div className="space-y-4 animate-in fade-in slide-in-from-left-4 duration-300">
+              <div className="space-y-4">
                 <ProfileRow icon={<Mail size={16}/>} label="Email" value={user?.email} />
                 <ProfileRow icon={<Phone size={16}/>} label="Téléphone" value={user?.phone || "Non renseigné"} />
                 <ProfileRow icon={<MapPin size={16}/>} label="Localisation" value={user?.location || "Lubumbashi"} />
@@ -231,7 +227,7 @@ export default function Header() {
 
 function ProfileRow({ icon, label, value }: { icon: any, label: string, value?: string }) {
   return (
-    <div className="flex items-center gap-4 p-4 rounded-2xl bg-muted/30 border border-border/40 hover:bg-muted/50 transition-colors">
+    <div className="flex items-center gap-4 p-4 rounded-2xl bg-muted/30 border border-border/40 hover:bg-muted/50 transition-colors text-left">
       <div className="p-2.5 bg-background rounded-xl text-primary shadow-sm">{icon}</div>
       <div className="flex flex-col">
         <span className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">{label}</span>
